@@ -1,62 +1,54 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import * as Location from 'expo-location';
 import { requestAndFetchLocation, getLocationNameFromCoords } from '../../components/locationUtils';
 import Constants from 'expo-constants';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
 import { useLanguage, getLanguageName, SupportedLanguage } from '../../components/LanguageContext';
-import { useUser } from '../../components/UserContext';
+import { useTranslation } from 'react-i18next';
+import { useUser, UserData } from '../../components/UserContext';
 import { useTheme } from '../../components/ThemeContext';
 import { Modal as RNModal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import TranslatedText from '../../components/TranslatedText';
-import { UserDTO, AuthMeResponse } from '../../src/types/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authGet, API_BASE } from '../../config/api';
 import { authUpload } from '../../config/api';
 import { authPost } from '../../config/api';
 import { sendEmailOtp } from '../../config/api';
 import { updateProfile } from '../../config/api';
-import { useAuthGuard } from '../../src/hooks/useAuthGuard';
-
-//import { ActivityIndicator } from 'react-native-paper';
 
 // Helper function to convert relative path to full URL
 const getFullImageUrl = (path: string | null | undefined): string | null => {
   if (!path) return null;
-  
+
   // If it's already a full URL, return as is
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
-  
+
   // Remove /api from API_BASE and append the path
   const baseUrl = API_BASE.replace('/api', '');
-  
+
   // Ensure path starts with /
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  
-  const fullUrl = `${baseUrl}${normalizedPath}`;
-  console.log('🔗 Converting path to full URL:', { path, fullUrl });
-  
-  return fullUrl;
+
+  return `${baseUrl}${normalizedPath}`;
 };
 
+// All languages supported by the app (must match LanguageContext.SupportedLanguage)
+const ALL_LANGUAGES: SupportedLanguage[] = ['en', 'af', 'zu', 'xh', 'tn', 've', 'ts', 'nso', 'st', 'nr', 'ss'];
 
-type UserData = {
-  name: string;
-  email: string;
-  location: string;
-  joinDate: string;
-  completedCourses: number;
-  currentLevel: string;
-  profile_picture_url?: string;
-  email_verified_at?: string;
+// Format the account creation date nicely (backend returns ISO strings like "2024-01-15T08:30:00.000000Z")
+const formatJoinDate = (value: string | undefined | null): string => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
@@ -64,6 +56,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 const ProfileScreen = ({ navigation }: Props) => {
   const { userData, setUserData } = useUser();
   const { language, setLanguage } = useLanguage();
+  const { t } = useTranslation();
 
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +68,7 @@ const ProfileScreen = ({ navigation }: Props) => {
   const [isLocLoading, setIsLocLoading] = useState(false);
   const [isLogoutLoading, setIsLogoutLoading] = useState(false);
   const [isLangModalVisible, setIsLangModalVisible] = useState(false);
-  const [pendingLang, setPendingLang] = useState(language);
+  const [pendingLang, setPendingLang] = useState<SupportedLanguage>(language);
   const [isEmailVerifying, setIsEmailVerifying] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -86,6 +79,25 @@ const ProfileScreen = ({ navigation }: Props) => {
       : '') ||
     '';
 
+  // Keep the modal selection in sync with the active language when opened
+  useEffect(() => {
+    if (isLangModalVisible) setPendingLang(language);
+  }, [isLangModalVisible, language]);
+
+  // Merge backend user fields onto locally-known fields (joinDate, stats, etc.)
+  // so that refreshing from the API never wipes data the backend doesn't return.
+  const mergeUser = (incoming: Partial<UserData> | null | undefined, base: UserData): UserData => {
+    if (!incoming) return base;
+    const merged: UserData = { ...base };
+    (Object.keys(incoming) as (keyof UserData)[]).forEach((key) => {
+      const value = incoming[key];
+      if (value !== undefined && value !== null && value !== '') {
+        (merged as any)[key] = value;
+      }
+    });
+    return merged;
+  };
+
   // 🔹 Load profile (cached + backend refresh)
   useEffect(() => {
     let mounted = true;
@@ -93,26 +105,23 @@ const ProfileScreen = ({ navigation }: Props) => {
       try {
         const cached = await AsyncStorage.getItem('user');
         if (cached && mounted) {
-          const parsed: UserData = JSON.parse(cached);
-          setUser(parsed);
-          const cachedImageUrl = getFullImageUrl(parsed.profile_picture_url);
-          console.log('📦 Cached profile image:', cachedImageUrl);
-          setProfileImage(cachedImageUrl);
-          setUserData(parsed);
+          try {
+            const parsed: UserData = JSON.parse(cached);
+            setUser(parsed);
+            setProfileImage(getFullImageUrl(parsed.profile_picture_url));
+            setUserData(parsed);
+          } catch {
+            await AsyncStorage.removeItem('user');
+          }
         }
 
-        const me = await authGet<{ user: UserData }>('/mobile/me');
+        const me = await authGet<{ user: Partial<UserData> }>('/mobile/me');
         if (mounted) {
-          console.log('👤 User data from /mobile/me:', me.user);
-          console.log('🖼️ Raw profile picture URL from backend:', me.user.profile_picture_url);
-          
-          const fullImageUrl = getFullImageUrl(me.user.profile_picture_url);
-          console.log('🖼️ Full profile image URL:', fullImageUrl);
-          
-          setUser(me.user);
-          setProfileImage(fullImageUrl);
-          setUserData(me.user);
-          await AsyncStorage.setItem('user', JSON.stringify(me.user));
+          const merged = mergeUser(me.user, (user ?? userData) as UserData);
+          setUser(merged);
+          setProfileImage(getFullImageUrl(merged.profile_picture_url));
+          setUserData(merged);
+          await AsyncStorage.setItem('user', JSON.stringify(merged));
         }
       } catch (e) {
         await AsyncStorage.multiRemove(['token', 'user']);
@@ -124,6 +133,7 @@ const ProfileScreen = ({ navigation }: Props) => {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, setUserData]);
 
   // 🔹 Refresh profile data when screen comes into focus
@@ -131,41 +141,29 @@ const ProfileScreen = ({ navigation }: Props) => {
     React.useCallback(() => {
       const refreshProfile = async () => {
         try {
-          // Only refresh if we don't have recent user data
-          const lastRefresh = await AsyncStorage.getItem('lastProfileRefresh');
-          const now = Date.now();
-          
-          // Don't refresh if it was refreshed less than 30 seconds ago
-          // This prevents overriding location data set during login/signup
-          if (lastRefresh && (now - parseInt(lastRefresh)) < 30000) {
-            return;
-          }
+          const me = await authGet<{ user: Partial<UserData> }>('/mobile/me');
 
-          const me = await authGet<{ user: UserData }>('/mobile/me');
-          
-          // Only update if the backend has more recent data
           if (me.user) {
-            const refreshedImageUrl = getFullImageUrl(me.user.profile_picture_url);
-            console.log('🔄 Refreshed profile image URL:', refreshedImageUrl);
-            
-            setUser(me.user);
-            setProfileImage(refreshedImageUrl);
-            setUserData(me.user);
-            await AsyncStorage.multiSet([
-              ['user', JSON.stringify(me.user)],
-              ['lastProfileRefresh', now.toString()]
-            ]);
+            // Merge instead of replacing so local-only fields
+            // (joinDate, completedCourses, currentLevel) survive the refresh.
+            const merged = mergeUser(me.user, (user ?? userData) as UserData);
+            setUser(merged);
+            setProfileImage(getFullImageUrl(merged.profile_picture_url));
+            setUserData(merged);
+            await AsyncStorage.setItem('user', JSON.stringify(merged));
           }
         } catch (e) {
           console.log('Failed to refresh profile:', e);
         }
       };
       refreshProfile();
-    }, [setUserData])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, userData, setUserData])
   );
 
   // 🔹 Update location
   const handleUpdateLocation = async () => {
+    if (isLocLoading) return;
     setIsLocLoading(true);
     try {
       const loc = await requestAndFetchLocation();
@@ -176,22 +174,32 @@ const ProfileScreen = ({ navigation }: Props) => {
       const { latitude, longitude } = loc.coords;
       const locationName = await getLocationNameFromCoords(latitude, longitude, OPENCAGE_API_KEY);
       if (locationName) {
-        // Update backend
-        const response = await updateProfile({ location: locationName });
-        
-        // Update local state
-        const updated = { ...(user ?? userData), location: locationName };
-        setUser(updated);
-        setUserData(updated);
-        await AsyncStorage.setItem('user', JSON.stringify(updated));
-        
+        // Save on the backend first so the change persists across devices
+        try {
+          const response = await updateProfile({ location: locationName });
+          const merged = mergeUser(response?.user, { ...(user ?? userData), location: locationName });
+          setUser(merged);
+          setUserData(merged);
+          await AsyncStorage.setItem('user', JSON.stringify(merged));
+        } catch {
+          // Even if the backend call fails, keep the fresh local value
+          const updated = { ...(user ?? userData), location: locationName };
+          setUser(updated);
+          setUserData(updated);
+          await AsyncStorage.setItem('user', JSON.stringify(updated));
+        }
         Alert.alert('Success', 'Location updated successfully!');
+      } else if (!OPENCAGE_API_KEY) {
+        Alert.alert(
+          'No Geocoding Key',
+          'Your position was detected, but no OpenCage API key is configured, so the address could not be resolved.'
+        );
       } else {
-        Alert.alert('Error', 'Could not fetch location name.');
+        Alert.alert('Error', 'Could not resolve your address. Please try again later.');
       }
     } catch (e) {
       console.error('Location update error:', e);
-      Alert.alert('Error', 'Failed to update location.');
+      Alert.alert('Error', 'Failed to update location. Make sure location services are enabled.');
     } finally {
       setIsLocLoading(false);
     }
@@ -334,32 +342,21 @@ const ProfileScreen = ({ navigation }: Props) => {
         name: `profile_picture.${fileExtension || 'jpg'}`,
       } as any);
       
-      console.log('📤 Uploading profile picture:', {
-        uri: tempImage,
-        type: mimeType,
-        name: `profile_picture.${fileExtension || 'jpg'}`
-      });
 
       // Upload to backend
-      const response = await authUpload<{ user: UserData }>('/mobile/profile/avatar', formData);
-      console.log('✅ Upload successful:', response);
-      
+      const response = await authUpload<{ user: Partial<UserData> }>('/mobile/profile/avatar', formData);
+
       // Validate response
       if (!response.user) {
         throw new Error('Invalid response from server');
       }
-      
-      // Update local state with the new profile picture URL
-      const rawProfileUrl = response.user.profile_picture_url;
-      console.log('🖼️ Raw profile picture URL from upload response:', rawProfileUrl);
-      
-      const fullProfileUrl = getFullImageUrl(rawProfileUrl);
-      console.log('🖼️ Full profile picture URL:', fullProfileUrl);
-      
-      setProfileImage(fullProfileUrl);
-      setUser(response.user);
-      setUserData(response.user);
-      await AsyncStorage.setItem('user', JSON.stringify(response.user));
+
+      // Merge uploaded user onto current profile so no fields are lost
+      const merged = mergeUser(response.user, (user ?? userData) as UserData);
+      setProfileImage(getFullImageUrl(merged.profile_picture_url));
+      setUser(merged);
+      setUserData(merged);
+      await AsyncStorage.setItem('user', JSON.stringify(merged));
       
       // Close modal first, then show success
       setIsModalVisible(false);
@@ -392,56 +389,58 @@ const ProfileScreen = ({ navigation }: Props) => {
   };
 
   // 🔹 Display user (fallback if not loaded yet)
-  const displayUser = user ?? {
-    name: userData.name || 'John Doe',
-    email: userData.email || 'john.doe@example.com',
-    location: userData.location || 'Unknown',
-    joinDate: userData.joinDate || 'January 2024',
+  const displayUser: UserData = user ?? {
+    name: userData.name || '—',
+    email: userData.email || '',
+    location: userData.location || '',
+    joinDate: userData.joinDate || '',
     completedCourses: userData.completedCourses || 0,
-    currentLevel: userData.currentLevel || 'Beginner',
+    currentLevel: userData.currentLevel || '—',
+    profile_picture_url: userData.profile_picture_url,
+    email_verified_at: userData.email_verified_at,
   };
 
   // 🔹 Stats
   const stats = [
-    { title: 'Completed', value: displayUser.completedCourses, icon: 'checkmark-circle' },
-    { title: 'Level', value: displayUser.currentLevel, icon: 'trophy' },
-    { title: 'Member Since', value: displayUser.joinDate, icon: 'calendar' },
+    { title: t('profile.completedStat'), value: String(displayUser.completedCourses ?? 0), icon: 'checkmark-circle' },
+    { title: t('profile.levelStat'), value: displayUser.currentLevel || '—', icon: 'trophy' },
+    { title: t('profile.memberSince'), value: formatJoinDate(displayUser.joinDate), icon: 'calendar' },
   ];
 
   // 🔹 Menu
   const menuItems = [
-    { icon: 'person-outline', title: 'Edit Profile', onPress: () => navigation.navigate('Edit Profile') },
-    { icon: 'settings-outline', title: 'Settings', onPress: () => navigation.navigate('Settings') },
-    { icon: 'shield-checkmark-outline', title: 'Privacy', onPress: () => navigation.navigate('Privacy') },
-    { icon: 'help-circle-outline', title: 'Help & Support', onPress: () => navigation.navigate('Help&Support') },
+    { icon: 'person-outline', title: t('profile.editProfile'), onPress: () => navigation.navigate('Edit Profile') },
+    { icon: 'settings-outline', title: t('profile.settings'), onPress: () => navigation.navigate('Settings') },
+    { icon: 'shield-checkmark-outline', title: t('settings.privacy'), onPress: () => navigation.navigate('Privacy') },
+    { icon: 'help-circle-outline', title: t('settings.helpSupport'), onPress: () => navigation.navigate('Help&Support') },
     { 
       icon: isLogoutLoading ? 'refresh' : 'log-out-outline', 
-      title: isLogoutLoading ? 'Logging out...' : 'Logout', 
+      title: isLogoutLoading ? t('profile.loggingOut') : t('auth.logout'), 
       onPress: handleLogout,
       disabled: isLogoutLoading
     },
   ];
 
-  // if (loading) {
-  //   return (
-  //     <View className="flex-1 justify-center items-center">
-  //       <ActivityIndicator size="large" />
-  //     </View>
-  //   );
-  // }
-
   const { colors, isDark } = useTheme();
+
+  if (loading && !user) {
+    return (
+      <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color="#E67012" />
+      </View>
+    );
+  }
 
   return (
     <>
-      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={{ paddingBottom: 32 }}>
         {/* Header */}
-  <View style={[styles.header, { backgroundColor: colors.card }]}>
+        <View style={[styles.header, { backgroundColor: colors.card }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#E67012" />
           </TouchableOpacity>
-          <TranslatedText style={[styles.headerTitle, { color: colors.primary }]}>Profile</TranslatedText>
-          <TouchableOpacity onPress={() => navigation.navigate('Edit Profile')}>
+          <Text style={[styles.headerTitle, { color: colors.primary }]}>{t('profile.title')}</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Edit Profile')} style={styles.backButton}>
             <Ionicons name="create-outline" size={24} color="#E67012" />
           </TouchableOpacity>
         </View>
@@ -469,11 +468,11 @@ const ProfileScreen = ({ navigation }: Props) => {
 
           <Text style={[styles.name, { color: colors.text }]}>{displayUser.name}</Text>
           <View style={styles.emailContainer}>
-            <Text style={[styles.email, { color: colors.muted }]}>{displayUser.email}</Text>
+            <Text style={[styles.email, { color: colors.muted }]} numberOfLines={1}>{displayUser.email}</Text>
             {displayUser.email_verified_at ? (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                <Text style={styles.verifiedText}>Verified</Text>
+                <Text style={styles.verifiedText}>{t('profile.verified')}</Text>
               </View>
             ) : (
               <TouchableOpacity 
@@ -487,51 +486,59 @@ const ProfileScreen = ({ navigation }: Props) => {
                   color="#E67012" 
                 />
                 <Text style={styles.verifyButtonText}>
-                  {isEmailVerifying ? 'Sending...' : 'Verify Email'}
+                  {isEmailVerifying ? t('profile.sending') : t('profile.verifyEmail')}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
           <View style={styles.locationContainer}>
-            <Ionicons name="location-outline" size={16} color="#666" />
-            <Text style={[styles.location, { color: colors.muted }]}>{displayUser.location || 'Location not set'}</Text>
-            <TouchableOpacity 
-              onPress={handleUpdateLocation} 
+            <Ionicons name="location-outline" size={16} color="#E67012" />
+            <Text style={[styles.location, { color: colors.muted }]} numberOfLines={1}>
+              {displayUser.location || t('profile.locationNotSet')}
+            </Text>
+            <TouchableOpacity
+              onPress={handleUpdateLocation}
               disabled={isLocLoading}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityLabel={t('profile.updateLocation')}
             >
-              <Ionicons 
-                name={isLocLoading ? "refresh" : "refresh-outline"} 
-                size={16} 
-                color="#E67012" 
+              <Ionicons
+                name={isLocLoading ? 'refresh' : 'refresh-outline'}
+                size={18}
+                color="#E67012"
               />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Stats */}
-        <View style={[styles.statsContainer, { backgroundColor: isDark ? '#1e1e1eff' : '#f8f8f8' }]}>
+        <View style={[styles.statsContainer, { backgroundColor: isDark ? '#1e1e1e' : '#f8f8f8' }]}>
           {stats.map((stat, index) => (
             <View key={index} style={styles.statItem}>
               <Ionicons name={String(stat.icon)} size={24} color="#E67012" />
-              <Text style={[styles.statValue, { color: isDark ? '#fff' : '#000' }]}>{stat.value}</Text>
-              <TranslatedText style={styles.statTitle}>{stat.title}</TranslatedText>
+              <Text style={[styles.statValue, { color: isDark ? '#fff' : '#000' }]} numberOfLines={1}>{stat.value}</Text>
+              <Text style={[styles.statTitle, { color: isDark ? colors.muted : '#666' }]} numberOfLines={1}>{stat.title}</Text>
             </View>
           ))}
         </View>
 
         {/* Language Selection */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+        <View style={styles.languageSection}>
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 }}
+            style={[styles.languageRow, { borderBottomColor: isDark ? '#333' : '#f0f0f0' }]}
             onPress={() => setIsLangModalVisible(true)}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={styles.menuItemLeft}>
               <Ionicons name="language-outline" size={22} color="#E67012" />
-              <TranslatedText style={[{ marginLeft: 12, fontSize: 16, color: '#333' }, isDark && { color: '#666' }]}>Language</TranslatedText>
+              <Text style={[styles.languageLabel, { color: isDark ? '#fff' : '#333' }]}>{t('settings.language')}</Text>
             </View>
-            <Text style={{ color: '#E67012', fontWeight: 'bold' }}>{getLanguageName(language)}</Text>
+            <View style={styles.languageRight}>
+              <Text style={styles.languageValue}>{getLanguageName(language)}</Text>
+              <Ionicons name="chevron-forward" size={18} color="#E67012" />
+            </View>
           </TouchableOpacity>
         </View>
+
         {/* Language Modal */}
         <RNModal
           visible={isLangModalVisible}
@@ -539,66 +546,52 @@ const ProfileScreen = ({ navigation }: Props) => {
           animationType="slide"
           onRequestClose={() => setIsLangModalVisible(false)}
         >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
-            <View style={[{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%' }, isDark && { backgroundColor: '#1e1e1e' }]}>
-              <TranslatedText style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 16 }}>Select Language</TranslatedText>
-              {['en', 'af', 'zu'].map((code) => {
-                const active = pendingLang === code;
-                return (
-                  <TouchableOpacity
-                    key={code}
-                    onPress={() => setPendingLang(code as SupportedLanguage)}
-                    style={{ marginVertical: 6, width: '100%' }}
-                  >
-                    {active ? (
-                      <LinearGradient
-                        colors={['#FF9800', '#FF6D00']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ borderRadius: 12, padding: 14, alignItems: 'center' }}
-                      >
-                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{getLanguageName(code as SupportedLanguage)}</Text>
-                      </LinearGradient>
-                    ) : (
-                      <View
-                        style={{
-                          
-                          borderColor: '#E67012',
-                          borderWidth: 2,
-                          borderRadius: 12,
-                          padding: 14,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text style={{ color: '#E67012', fontWeight: 'bold', fontSize: 16 }}>{getLanguageName(code as SupportedLanguage)}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 18, width: "100%", alignItems: "center" }}>
-                <TouchableOpacity onPress={() => setIsLangModalVisible(false)} style={{ marginRight: 16 }}>
-                  <TranslatedText style={{ color: '#7e7d7dff', fontWeight: '600' }}>Cancel</TranslatedText>
+          <View style={styles.langModalOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
+            <View style={[styles.langModalContent, isDark && { backgroundColor: '#1e1e1e' }]}>
+              <Text style={[styles.langModalTitle, { color: isDark ? '#fff' : '#000' }]}>{t('profile.selectLanguageTitle')}</Text>
+              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                {ALL_LANGUAGES.map((code) => {
+                  const active = pendingLang === code;
+                  return (
+                    <TouchableOpacity
+                      key={code}
+                      onPress={() => setPendingLang(code)}
+                      style={[styles.langOption, active && styles.langOptionActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={[styles.langOptionText, active && styles.langOptionTextActive]}>
+                        {getLanguageName(code)}
+                      </Text>
+                      {active && <Ionicons name="checkmark-circle" size={20} color="#fff" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.langModalButtons}>
+                <TouchableOpacity onPress={() => setIsLangModalVisible(false)} style={styles.langCancelBtn}>
+                  <Text style={{ color: '#7e7d7d', fontWeight: '600' }}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 <LinearGradient
-                colors={['#FF9800', '#FF6D00']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ borderRadius: 12, padding: 10, alignItems: 'center', width: "40%" }}
+                  colors={['#FF9800', '#FF6D00']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.langSaveBtn}
                 >
                   <TouchableOpacity
-                  onPress={() => {
-                    setLanguage(pendingLang);
-                    setIsLangModalVisible(false);
-                  }}
-                  
-                >
-                  <TranslatedText style={{ color: '#fff', fontWeight: 'bold' }}>Save</TranslatedText>
-                </TouchableOpacity>
+                    style={{ width: '100%', alignItems: 'center' }}
+                    onPress={() => {
+                      setLanguage(pendingLang);
+                      setIsLangModalVisible(false);
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>{t('common.save')}</Text>
+                  </TouchableOpacity>
                 </LinearGradient>
-                
               </View>
             </View>
+            </KeyboardAvoidingView>
           </View>
         </RNModal>
 
@@ -618,18 +611,18 @@ const ProfileScreen = ({ navigation }: Props) => {
                   color={
                     item.disabled 
                       ? '#ccc' 
-                      : item.title.includes('Logout') 
+                      : item.title === t('auth.logout') || item.title === t('profile.loggingOut')
                         ? '#FF3B30' 
                         : '#666'
                   } 
                 />
-                <TranslatedText style={[
+                <Text style={[
                   styles.menuItemText, { color: isDark ? colors.muted : "#333" },
-                  item.title.includes('Logout') && styles.logoutText,
+                  (item.title === t('auth.logout') || item.title === t('profile.loggingOut')) && styles.logoutText,
                   item.disabled && styles.disabledText
                 ]}>
                   {item.title}
-                </TranslatedText>
+                </Text>
               </View>
 
               {!item.disabled && <Ionicons name="chevron-forward" size={20} color="#E67012" />}
@@ -704,8 +697,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingHorizontal:10,
-    
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -794,11 +789,105 @@ const styles = StyleSheet.create({
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    maxWidth: '90%',
   },
   location: {
     fontSize: 14,
     color: '#666',
     marginLeft: 4,
+    marginRight: 8,
+    flexShrink: 1,
+  },
+  languageSection: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  languageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  languageLabel: {
+    marginLeft: 12,
+    fontSize: 16,
+  },
+  languageRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  languageValue: {
+    color: '#E67012',
+    fontWeight: 'bold',
+    marginRight: 6,
+  },
+  langModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  langModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+  },
+  langModalTitle: {
+    fontWeight: 'bold',
+    fontSize: 18,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  langOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E67012',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginVertical: 5,
+    backgroundColor: 'transparent',
+  },
+  langOptionActive: {
+    borderWidth: 0,
+    backgroundColor: '#F57C00',
+    gap: 8,
+  },
+  langOptionText: {
+    color: '#E67012',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  langOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  langModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 18,
+    width: '100%',
+    gap: 12,
+  },
+  langCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  langSaveBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
   statsContainer: {
     flexDirection: 'row',

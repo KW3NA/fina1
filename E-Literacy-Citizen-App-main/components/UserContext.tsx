@@ -8,6 +8,7 @@ export type UserData = {
   completedCourses: number;
   currentLevel: string;
   email_verified_at?: string;
+  profile_picture_url?: string | null;
 };
 
 const defaultUserData: UserData = {

@@ -34,6 +34,7 @@ import Constants from 'expo-constants';
 import { encode as btoa } from 'base-64';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../components/ThemeContext';
+import { useUser } from '../../components/UserContext';
 
 type Experience = {
   title: string;
@@ -132,8 +133,17 @@ const MyTemplatesScreen = ({ templates, onPreview }) => {
 };
 
 const CVBuilder = ({ navigation }: Props) => {
+  const { colors, isDark } = useTheme();
   // State to manage the current step of the CV builder flow
   const [currentStep, setCurrentStep] = useState<number>(0);
+
+  // Logged-in user's actual name (used for the "Generate with AI" button + CV data)
+  const { userData } = useUser();
+  const trimmedUserName = (userData?.name ?? '').trim();
+  const userNameParts = trimmedUserName.split(/\s+/).filter(Boolean);
+  const aiButtonLabel = trimmedUserName
+    ? `Generate ${trimmedUserName}'s CV with AI`
+    : 'Generate CV with AI';
 
   // State to manage CV data
   const [cvData, setCvData] = useState<CvData>({
@@ -152,6 +162,23 @@ const CVBuilder = ({ navigation }: Props) => {
     profileImage: null,
   });
 
+  // Pre-fill the CV with the logged-in user's actual details so the generated
+  // CV always carries their real name (and they can still edit it afterwards).
+  React.useEffect(() => {
+    if (trimmedUserName) {
+      setCvData(prev => {
+        if (prev.name || prev.surname) return prev; // don't overwrite user edits
+        return {
+          ...prev,
+          name: userNameParts[0] ?? '',
+          surname: userNameParts.slice(1).join(' '),
+          email: prev.email || (userData?.email ?? ''),
+          physicalAddress: prev.physicalAddress || (userData?.location ?? ''),
+        };
+      });
+    }
+  }, [trimmedUserName]);
+
   // State for AI generation loading (repurposed for simulated processing)
   const [isProcessingDocument, setIsProcessingDocument] = useState<boolean>(false);
   // State to control the visibility of the AI generation choice modal
@@ -162,7 +189,6 @@ const CVBuilder = ({ navigation }: Props) => {
   const navigation2 = useNavigation();
   // Add state for modal and fullscreen preview:
   const [showGeneratedModal, setShowGeneratedModal] = useState(false);
-  const [showFullScreenPreview, setShowFullScreenPreview] = useState(false);
   const [myTemplates, setMyTemplates] = useState<{data: any, template: string, color: string, date: string}[]>([]);
   const [showMyTemplatesScreen, setShowMyTemplatesScreen] = useState(false);
   // Add state for PDF URI
@@ -296,13 +322,14 @@ const CVBuilder = ({ navigation }: Props) => {
     // Simulate file upload delay
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Simulate AI scanning and data extraction with dummy data
+    // Simulate AI scanning and data extraction with dummy data.
+    // The user's ACTUAL name always takes priority over the extracted/dummy name.
     const dummyCvData = {
-      name: 'Jane',
-      surname: 'Doe',
+      name: userNameParts[0] ?? 'Jane',
+      surname: userNameParts.slice(1).join(' ') || 'Doe',
       contactInfo: '+27 81 234 5678',
-      email: 'jane.doe@example.com',
-      physicalAddress: '456 Oak Avenue, Cityville',
+      email: userData?.email || 'jane.doe@example.com',
+      physicalAddress: userData?.location || '456 Oak Avenue, Cityville',
       summary: 'Highly motivated and results-oriented Software Developer with 5 years of experience in full-stack web development. Proficient in JavaScript, React, and Node.js, with a strong understanding of agile methodologies and a passion for building scalable and user-friendly applications.',
       highestQualification: 'BSc Computer Science',
       yearObtained: '2019',
@@ -338,10 +365,16 @@ const CVBuilder = ({ navigation }: Props) => {
     // Simulate processing delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // For this demonstration, we'll just use the current cvData as is,
-    // as there's no AI to process it further.
-    // In a real scenario, this would involve structuring the existing data
-    // into a prompt for an AI model to refine or expand upon.
+    // Merge in the logged-in user's actual name/contact so the generated CV
+    // always reflects their real identity.
+    setCvData(prev => ({
+      ...prev,
+      name: prev.name || userNameParts[0] || '',
+      surname: prev.surname || userNameParts.slice(1).join(' '),
+      email: prev.email || (userData?.email ?? ''),
+      physicalAddress: prev.physicalAddress || (userData?.location ?? ''),
+    }));
+
     console.log("Generating CV from existing app info:", cvData);
 
     setIsProcessingDocument(false);
@@ -861,6 +894,81 @@ const CVBuilder = ({ navigation }: Props) => {
   }
 
 
+  // Build the full template payload from the current CV data (single source of truth)
+  const buildTemplateData = () => {
+    const mappedExperience = (cvData.experience || []).map(exp => ({
+      title: exp.title,
+      company: exp.company,
+      period: exp.duration, // ensure period is set
+      duration: exp.duration,
+      description: exp.description,
+    }));
+    return {
+      name: `${cvData.name} ${cvData.surname}`.trim() || 'Professional',
+      title: 'Professional',
+      email: cvData.email,
+      phone: cvData.contactInfo,
+      address: cvData.physicalAddress,
+      aboutMe: cvData.summary,
+      description: '',
+      experience: mappedExperience,
+      education: cvData.highestQualification ? [{ institution: '', degree: cvData.highestQualification, period: cvData.yearObtained }] : [],
+      skills: cvData.skills.map(skill => ({ name: skill, level: 80 })),
+      languages: [],
+      expertise: [],
+      profileImage: cvData.profileImage,
+      mainColor: selectedColor,
+      ...cvData
+    };
+  };
+
+  // Read the selected profile photo (if any) as a base64 data URI for the HTML templates
+  const getBase64ProfileImage = async (): Promise<string> => {
+    if (!cvData.profileImage) return '';
+    if (cvData.profileImage.startsWith('file://')) {
+      const base64 = await FileSystem.readAsStringAsync(cvData.profileImage, { encoding: 'base64' });
+      return `data:image/jpeg;base64,${base64}`;
+    }
+    return cvData.profileImage;
+  };
+
+  // Generate the PDF locally with expo-print and open it in the system viewer
+  // (preview + download/save-to-files/share all come from that one viewer).
+  const generatePdfLocally = async () => {
+    try {
+      setIsGeneratingPdf(true);
+      const templateData = buildTemplateData();
+      const base64Image = await getBase64ProfileImage();
+      const html =
+        selectedTemplate === 'template_1'
+          ? generateTemplate1HTML(templateData, selectedColor, base64Image)
+          : generateGreenTemplateHTML(templateData, selectedColor, base64Image);
+
+      const safeName = (templateData.name || 'CV').replace(/[^a-zA-Z0-9]+/g, '_');
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      const finalUri = `${FileSystem.documentDirectory}${safeName}_CV.pdf`;
+      await FileSystem.moveAsync({ from: uri, to: finalUri });
+      setPdfUri(finalUri);
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        // Opens the native PDF preview with options to save/download/share the file
+        await Sharing.shareAsync(finalUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `${templateData.name} CV`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('PDF ready', `Your CV was saved to: ${finalUri}`);
+      }
+    } catch (e: any) {
+      console.error('Local PDF generation failed:', e);
+      Alert.alert('Error', 'Could not generate the PDF. Please try again.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   // HTML2PDF Rocket integration (cloud PDF generation)
   async function generatePdfViaHtml2PdfRocket(html: string) {
     // Get API key from environment variable (set in app.config.js or app.json under extra)
@@ -904,8 +1012,12 @@ const CVBuilder = ({ navigation }: Props) => {
       const base64 = btoa(binaryString);
       const fileUri = FileSystem.documentDirectory + 'cv.pdf';
       await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: 'base64' });
-      await Sharing.shareAsync(fileUri);
-      alert('PDF generated and shared!');
+      setPdfUri(fileUri);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+      }
+      Alert.alert('PDF generated!', 'Your CV PDF is ready. Use the Download & Preview button to open it.');
     } catch (e: any) {
       Alert.alert('Oops, this feature is under maintenance, Try again later');
       console.error('HTML2PDF Rocket exception:', e);
@@ -958,7 +1070,7 @@ const CVBuilder = ({ navigation }: Props) => {
                 </Text>
               )}
               <TranslatedText style={styles.generateAIButtonText}>
-                {isProcessingDocument ? 'Processing...' : 'Generate with AI'}
+                {isProcessingDocument ? 'Processing...' : aiButtonLabel}
               </TranslatedText>
             </TouchableOpacity>
           </View>
@@ -1389,10 +1501,63 @@ const CVBuilder = ({ navigation }: Props) => {
               style={styles.cvPreviewImage}
               resizeMode="contain"
             />
-            <TouchableOpacity style={styles.downloadButton}>
-              <Text style={styles.downloadButtonText}>Download CV</Text>
+            <TouchableOpacity
+              style={styles.downloadButton}
+              disabled={isGeneratingPdf}
+              onPress={async () => {
+                if (pdfUri) {
+                  try {
+                    const info = await FileSystem.getInfoAsync(pdfUri);
+                    if (info.exists) {
+                      const canShare = await Sharing.isAvailableAsync();
+                      if (canShare) {
+                        // Native viewer: preview + save/download/share the PDF
+                        await Sharing.shareAsync(pdfUri, { mimeType: 'application/pdf', dialogTitle: 'Your CV', UTI: 'com.adobe.pdf' });
+                        return;
+                      }
+                    }
+                  } catch (e) { console.error('Existing PDF open failed:', e); }
+                }
+                // No usable PDF yet — generate it now, then open it
+                await generatePdfLocally();
+              }}
+            >
+              {isGeneratingPdf ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.downloadButtonText}>Download CV</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.shareButton}>
+            <TouchableOpacity
+              style={styles.shareButton}
+              disabled={isGeneratingPdf}
+              onPress={async () => {
+                if (!pdfUri) {
+                  Alert.alert('No CV yet', 'Generate your CV first (choose a template), then share it.');
+                  return;
+                }
+                try {
+                  const info = await FileSystem.getInfoAsync(pdfUri);
+                  if (!info.exists) {
+                    Alert.alert('File missing', 'Please generate your CV again before sharing.');
+                    return;
+                  }
+                  const canShare = await Sharing.isAvailableAsync();
+                  if (!canShare) {
+                    Alert.alert('Sharing unavailable', 'Your device does not allow file sharing right now.');
+                    return;
+                  }
+                  await Sharing.shareAsync(pdfUri, {
+                    mimeType: 'application/pdf',
+                    dialogTitle: 'Share your CV',
+                    UTI: 'com.adobe.pdf',
+                  });
+                } catch (e: any) {
+                  console.error('Share CV failed:', e);
+                  Alert.alert('Error', 'Could not share the CV. Please try again.');
+                }
+              }}
+            >
               <Text style={styles.shareButtonText}>Share as Email</Text>
             </TouchableOpacity>
           </View>
@@ -1413,58 +1578,42 @@ const CVBuilder = ({ navigation }: Props) => {
         />
         <TouchableOpacity style={{ margin: 24, backgroundColor: '#1E90FF', borderRadius: 8, padding: 16, alignItems: 'center' }} onPress={async () => {
           setShowTemplateScreen(false);
-          // Prepare data for template
-          const mappedExperience = (cvData.experience || []).map(exp => ({
-            company: exp.company,
-            period: exp.duration, // ensure period is set
-            description: exp.description,
-          }));
-          const templateData = {
-            name: cvData.name + ' ' + cvData.surname,
-            title: 'Professional',
-            email: cvData.email,
-            phone: cvData.contactInfo,
-            address: cvData.physicalAddress,
-            aboutMe: cvData.summary,
-            description: '',
-            experience: mappedExperience,
-            education: cvData.highestQualification ? [{ institution: '', degree: cvData.highestQualification, period: cvData.yearObtained }] : [],
-            skills: cvData.skills.map(skill => ({ name: skill, level: 80 })),
-            languages: [],
-            expertise: [],
-            profileImage: cvData.profileImage,
-            mainColor: selectedColor,
-            ...cvData
-          };
-          // Convert local image to base64 if needed
-          let base64Image = '';
-          if (cvData.profileImage && cvData.profileImage.startsWith('file://')) {
-            const base64 = await FileSystem.readAsStringAsync(cvData.profileImage, { encoding: 'base64' });
-            base64Image = `data:image/jpeg;base64,${base64}`;
-          } else if (cvData.profileImage) {
-            base64Image = cvData.profileImage;
-          }
-          // Generate HTML based on selected template
-          let html;
-          if (selectedTemplate === 'template_1') {
-            html = generateTemplate1HTML(templateData, selectedColor, base64Image);
-          } else {
-            html = generateGreenTemplateHTML(templateData, selectedColor, base64Image);
-          }
-          console.log('HTML sent to PDFLayer:', html);
-          // For testing, use a simple HTML string
-          const testHtml = "<html><body><h1>Hello PDFCrowd!</h1></body></html>";
-          await generatePdfViaHtml2PdfRocket(html);
-          setShowSuccessScreen(true);
-          setMyTemplates(prev => [
-            ...prev,
-            {
-              data: templateData,
-              template: selectedTemplate,
-              color: selectedColor,
-              date: new Date().toLocaleString()
+          // Prepare data for template (single source of truth — includes the user's actual name)
+          const templateData = buildTemplateData();
+          try {
+            setIsGeneratingPdf(true);
+            const base64Image = await getBase64ProfileImage();
+            // Generate HTML based on selected template
+            let html;
+            if (selectedTemplate === 'template_1') {
+              html = generateTemplate1HTML(templateData, selectedColor, base64Image);
+            } else {
+              html = generateGreenTemplateHTML(templateData, selectedColor, base64Image);
             }
-          ]);
+            console.log('HTML sent to PDFLayer:', html.length, 'chars');
+            // Try the cloud API first; fall back to reliable local generation via expo-print
+            const apiKey = (Constants.expoConfig?.extra?.HTML2PDFROCKET_API_KEY || Constants.manifest?.extra?.HTML2PDFROCKET_API_KEY || 'YOUR_HTML2PDFROCKET_API_KEY_HERE');
+            if (!apiKey || apiKey === 'YOUR_HTML2PDFROCKET_API_KEY_HERE') {
+              await generatePdfLocally();
+            } else {
+              await generatePdfViaHtml2PdfRocket(html);
+            }
+            setShowSuccessScreen(true);
+            setMyTemplates(prev => [
+              ...prev,
+              {
+                data: templateData,
+                template: selectedTemplate,
+                color: selectedColor,
+                date: new Date().toLocaleString()
+              }
+            ]);
+          } catch (e: any) {
+            console.error('CV generation failed:', e);
+            Alert.alert('Error', 'Could not generate your CV. Please try again.');
+          } finally {
+            setIsGeneratingPdf(false);
+          }
         }}>
           <LinearGradient
             colors={['#1DACFF', '#1E90FF']}
@@ -1479,26 +1628,74 @@ const CVBuilder = ({ navigation }: Props) => {
   }
 
   if (showMyTemplatesScreen) {
-    return <MyTemplatesScreen templates={myTemplates} onPreview={idx => {
-      // Show full screen preview for selected template
-      setSelectedTemplate(myTemplates[idx].template);
-      setSelectedColor(myTemplates[idx].color);
-      setShowFullScreenPreview(true);
+    return <MyTemplatesScreen templates={myTemplates} onPreview={async idx => {
+      // Restore the saved CV + template selection and open the preview screen.
+      const saved = myTemplates[idx];
+      setSelectedTemplate(saved.template);
+      setSelectedColor(saved.color);
+      setCvData(prev => ({
+        ...prev,
+        ...(saved.data && typeof saved.data === 'object'
+          ? {
+              name: saved.data.name ?? prev.name,
+              surname: saved.data.surname ?? prev.surname,
+              contactInfo: saved.data.contactInfo ?? saved.data.phone ?? prev.contactInfo,
+              email: saved.data.email ?? prev.email,
+              physicalAddress: saved.data.physicalAddress ?? saved.data.address ?? prev.physicalAddress,
+              summary: saved.data.summary ?? saved.data.aboutMe ?? prev.summary,
+            }
+          : {}),
+      }));
       setShowMyTemplatesScreen(false);
       setCurrentStep(cvBuilderSteps.findIndex(step => step.type === 'preview'));
+      // Also let the user open the previously generated PDF directly
+      if (pdfUri) {
+        try {
+          const info = await FileSystem.getInfoAsync(pdfUri);
+          if (info.exists && (await Sharing.isAvailableAsync())) {
+            Alert.alert('Preview ready', 'You can view your CV now, or tap Download CV to open the PDF.', [
+              { text: 'Stay here', style: 'cancel' },
+              { text: 'Open PDF', onPress: () => Sharing.shareAsync(pdfUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' }) },
+            ]);
+          }
+        } catch (e) { /* non-blocking */ }
+      }
     }} />;
   }
 
   if (showSuccessScreen) {
     return <GenerationSuccessScreen pdfUri={pdfUri} onDownload={async () => {
-      if (pdfUri) {
-        await Sharing.shareAsync(pdfUri);
+      if (!pdfUri) {
+        // No PDF yet — generate it now so the button always works
+        await generatePdfLocally();
+        return;
+      }
+      try {
+        const info = await FileSystem.getInfoAsync(pdfUri);
+        if (!info.exists) {
+          Alert.alert('File missing', 'The CV file could not be found. Please generate your CV again.');
+          setShowSuccessScreen(false);
+          return;
+        }
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          // Opens the native viewer: preview + save-to-device/download/share in one place
+          await Sharing.shareAsync(pdfUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Your CV',
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          Alert.alert('Sharing unavailable', 'Enable sharing on your device or update Expo Go to open the PDF.', [{ text: 'OK' }]);
+        }
+      } catch (e: any) {
+        console.error('Failed to open CV PDF:', e);
+        Alert.alert('Error', 'Could not open the CV PDF. Please try again.');
       }
     }} onBack={() => { setShowSuccessScreen(false); setCurrentStep(0); }} />;
   }
 
   if (isGeneratingPdf) {
-    const { colors, isDark } = useTheme();
     return (
       <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color="#1E90FF" />
@@ -1506,7 +1703,7 @@ const CVBuilder = ({ navigation }: Props) => {
       </SafeAreaView>
     );
   }
-const { isDark } = useTheme();  
+
   return (
     <SafeAreaView style={[styles.safeArea, {backgroundColor: isDark  ? '#121212' : '#f8f8f8'}]}>
       <KeyboardAvoidingView
