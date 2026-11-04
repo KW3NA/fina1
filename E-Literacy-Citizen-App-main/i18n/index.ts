@@ -9,21 +9,45 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import en from './locales/en';
 import af from './locales/af';
 import zu from './locales/zu';
+import xh from './locales/xh';
+import tn from './locales/tn';
+import ve from './locales/ve';
+import ts from './locales/ts';
+import nso from './locales/nso';
+import st from './locales/st';
+import nr from './locales/nr';
+import ss from './locales/ss';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'af', label: 'Afrikaans' },
   { code: 'zu', label: 'isiZulu' },
+  { code: 'xh', label: 'isiXhosa' },
+  { code: 'tn', label: 'Setswana' },
+  { code: 've', label: 'Tshivenḓa' },
+  { code: 'ts', label: 'Xitsonga' },
+  { code: 'nso', label: 'Sepedi' },
+  { code: 'st', label: 'Sesotho' },
+  { code: 'nr', label: 'isiNdebele' },
+  { code: 'ss', label: 'siSwati' },
 ] as const;
 
 export type SupportedLanguageCode = (typeof SUPPORTED_LANGUAGES)[number]['code'];
 
 const STORAGE_KEY = '@e_literacy_language';
 
-const resources = {
+const resources: Record<string, { translation: any }> = {
   en: { translation: en },
   af: { translation: af },
   zu: { translation: zu },
+  xh: { translation: xh },
+  tn: { translation: tn },
+  ve: { translation: ve },
+  ts: { translation: ts },
+  nso: { translation: nso },
+  st: { translation: st },
+  nr: { translation: nr },
+  ss: { translation: ss },
 };
 
 // Map device locales (e.g. 'en-ZA', 'af-ZA', 'zu-ZA') onto supported languages.

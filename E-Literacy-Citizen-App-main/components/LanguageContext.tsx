@@ -7,7 +7,7 @@ import { syncI18nLanguage } from './languageBridge';
 export type SupportedLanguage = 'en' | 'af' | 'zu' | 'xh' | 'tn' | 've' | 'ts' | 'nso' | 'st' | 'nr' | 'ss';
 
 // Languages that have full static i18n bundles (see /i18n/locales).
-export const I18N_LANGUAGES: SupportedLanguage[] = ['en', 'af', 'zu'];
+export const I18N_LANGUAGES: SupportedLanguage[] = ['en', 'af', 'zu', 'xh', 'tn', 've', 'ts', 'nso', 'st', 'nr', 'ss'];
 
 const languageNames: Record<SupportedLanguage, string> = {
   en: 'English',
