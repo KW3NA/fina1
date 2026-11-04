@@ -28,16 +28,19 @@
     "expo-font": "~58.0.11",
     "expo-image-picker": "~58.0.10",
     "expo-linear-gradient": "~58.0.3",
+    "expo-localization": "^58.0.5",
     "expo-location": "~58.0.20",
     "expo-print": "~58.0.8",
     "expo-sharing": "~58.0.22",
     "expo-splash-screen": "~58.0.13",
     "expo-status-bar": "~58.0.4",
     "expo-web-browser": "~58.0.7",
+    "i18next": "^26.7.1",
     "lucide-react-native": "^0.543.0",
     "nativewind": "^4.1.23",
     "postcss": "^8.5.3",
     "react": "19.3.0",
+    "react-i18next": "^17.1.12",
     "react-native": "0.88.1",
     "react-native-gesture-handler": "~3.3.0",
     "react-native-linear-gradient": "^2.8.3",
@@ -61,5 +64,6 @@
     "react-native-worklets": "0.13.0",
     "typescript": "~6.0.3"
   },
-  "private": true
+  "private": true,
+  "license": "ISC"
 }

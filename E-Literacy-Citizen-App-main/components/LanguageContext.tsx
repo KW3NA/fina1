@@ -1,8 +1,13 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TranslationService } from './translation';
 import { getApiKey, validateApiKey } from '../config/translation';
+import { syncI18nLanguage } from './languageBridge';
 
 export type SupportedLanguage = 'en' | 'af' | 'zu' | 'xh' | 'tn' | 've' | 'ts' | 'nso' | 'st' | 'nr' | 'ss';
+
+// Languages that have full static i18n bundles (see /i18n/locales).
+export const I18N_LANGUAGES: SupportedLanguage[] = ['en', 'af', 'zu'];
 
 const languageNames: Record<SupportedLanguage, string> = {
   en: 'English',
@@ -18,37 +23,65 @@ const languageNames: Record<SupportedLanguage, string> = {
   ss: 'Swati',
 };
 
+const LANGUAGE_STORAGE_KEY = '@e_literacy_language';
+
 interface LanguageContextProps {
   language: SupportedLanguage;
   setLanguage: (lang: SupportedLanguage) => void;
-  t: (text: string) => Promise<string>;
+  /**
+   * Resolve a translation key against the active i18n bundle.
+   * Falls back to English when the selected language has no static bundle yet.
+   */
+  t: (key: string, options?: Record<string, any>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextProps | undefined>(undefined);
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
-  const [language, setLanguage] = useState<SupportedLanguage>('en');
+  const [language, setLanguageState] = useState<SupportedLanguage>('en');
 
-  // Initialize translation service with API key
-  React.useEffect(() => {
+  // Initialize translation service with API key (used for dynamic content translation).
+  useEffect(() => {
     const apiKey = getApiKey();
     if (validateApiKey(apiKey)) {
       TranslationService.initialize(apiKey);
       console.log('Translation service initialized successfully');
     } else {
-      console.warn('Invalid or missing Google Cloud Translation API key. Please set GOOGLE_CLOUD_TRANSLATION_API_KEY environment variable or update config/translation.ts');
+      console.warn('Invalid or missing Google Cloud Translation API key. Dynamic (live) translation is disabled; static i18n translations still work.');
     }
   }, []);
 
-  // Async translation function using TranslationService
-  const t = async (text: string) => {
-    if (language === 'en') return text;
-    try {
-      return await TranslationService.translateText(text, language, 'en');
-    } catch (e) {
-      return text; // fallback to original text on error
-    }
-  };
+  // Restore persisted language choice on startup.
+  useEffect(() => {
+    AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
+      .then((saved) => {
+        if (saved && saved in languageNames) {
+          setLanguageState(saved as SupportedLanguage);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Keep i18next in sync with the app-level language selection so that
+  // useTranslation() components re-render with the right bundle.
+  useEffect(() => {
+    const i18nLang = I18N_LANGUAGES.includes(language) ? language : 'en';
+    syncI18nLanguage(i18nLang);
+  }, [language]);
+
+  const setLanguage = useCallback((lang: SupportedLanguage) => {
+    setLanguageState(lang);
+    AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, lang).catch(() => {});
+  }, []);
+
+  const t = useCallback(
+    (key: string, options?: Record<string, any>) => {
+      // Lazy import avoided: i18n instance is a module singleton.
+      const i18nModule = require('../i18n').default;
+      return i18nModule.t(key, options) as string;
+    },
+    []
+  );
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>

@@ -1,5 +1,6 @@
 // App.tsx
 import * as React from 'react';
+import './i18n'; // initialize i18next (must come before any useTranslation usage)
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
