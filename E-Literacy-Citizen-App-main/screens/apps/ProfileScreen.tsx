@@ -2,13 +2,14 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { requestAndFetchLocation, getLocationNameFromCoords } from '../../components/locationUtils';
 import Constants from 'expo-constants';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
 import { useLanguage, getLanguageName, SupportedLanguage } from '../../components/LanguageContext';
+import { useTranslation } from 'react-i18next';
 import { useUser, UserData } from '../../components/UserContext';
 import { useTheme } from '../../components/ThemeContext';
 import { Modal as RNModal } from 'react-native';
@@ -55,6 +56,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 const ProfileScreen = ({ navigation }: Props) => {
   const { userData, setUserData } = useUser();
   const { language, setLanguage } = useLanguage();
+  const { t } = useTranslation();
 
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -400,20 +402,20 @@ const ProfileScreen = ({ navigation }: Props) => {
 
   // 🔹 Stats
   const stats = [
-    { title: 'Completed', value: String(displayUser.completedCourses ?? 0), icon: 'checkmark-circle' },
-    { title: 'Level', value: displayUser.currentLevel || '—', icon: 'trophy' },
-    { title: 'Member Since', value: formatJoinDate(displayUser.joinDate), icon: 'calendar' },
+    { title: t('profile.completedStat'), value: String(displayUser.completedCourses ?? 0), icon: 'checkmark-circle' },
+    { title: t('profile.levelStat'), value: displayUser.currentLevel || '—', icon: 'trophy' },
+    { title: t('profile.memberSince'), value: formatJoinDate(displayUser.joinDate), icon: 'calendar' },
   ];
 
   // 🔹 Menu
   const menuItems = [
-    { icon: 'person-outline', title: 'Edit Profile', onPress: () => navigation.navigate('Edit Profile') },
-    { icon: 'settings-outline', title: 'Settings', onPress: () => navigation.navigate('Settings') },
-    { icon: 'shield-checkmark-outline', title: 'Privacy', onPress: () => navigation.navigate('Privacy') },
-    { icon: 'help-circle-outline', title: 'Help & Support', onPress: () => navigation.navigate('Help&Support') },
+    { icon: 'person-outline', title: t('profile.editProfile'), onPress: () => navigation.navigate('Edit Profile') },
+    { icon: 'settings-outline', title: t('profile.settings'), onPress: () => navigation.navigate('Settings') },
+    { icon: 'shield-checkmark-outline', title: t('settings.privacy'), onPress: () => navigation.navigate('Privacy') },
+    { icon: 'help-circle-outline', title: t('settings.helpSupport'), onPress: () => navigation.navigate('Help&Support') },
     { 
       icon: isLogoutLoading ? 'refresh' : 'log-out-outline', 
-      title: isLogoutLoading ? 'Logging out...' : 'Logout', 
+      title: isLogoutLoading ? t('profile.loggingOut') : t('auth.logout'), 
       onPress: handleLogout,
       disabled: isLogoutLoading
     },
@@ -437,7 +439,7 @@ const ProfileScreen = ({ navigation }: Props) => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#E67012" />
           </TouchableOpacity>
-          <TranslatedText style={[styles.headerTitle, { color: colors.primary }]}>Profile</TranslatedText>
+          <Text style={[styles.headerTitle, { color: colors.primary }]}>{t('profile.title')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Edit Profile')} style={styles.backButton}>
             <Ionicons name="create-outline" size={24} color="#E67012" />
           </TouchableOpacity>
@@ -466,11 +468,11 @@ const ProfileScreen = ({ navigation }: Props) => {
 
           <Text style={[styles.name, { color: colors.text }]}>{displayUser.name}</Text>
           <View style={styles.emailContainer}>
-            <Text style={[styles.email, { color: colors.muted }]}>{displayUser.email}</Text>
+            <Text style={[styles.email, { color: colors.muted }]} numberOfLines={1}>{displayUser.email}</Text>
             {displayUser.email_verified_at ? (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                <Text style={styles.verifiedText}>Verified</Text>
+                <Text style={styles.verifiedText}>{t('profile.verified')}</Text>
               </View>
             ) : (
               <TouchableOpacity 
@@ -484,7 +486,7 @@ const ProfileScreen = ({ navigation }: Props) => {
                   color="#E67012" 
                 />
                 <Text style={styles.verifyButtonText}>
-                  {isEmailVerifying ? 'Sending...' : 'Verify Email'}
+                  {isEmailVerifying ? t('profile.sending') : t('profile.verifyEmail')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -492,13 +494,13 @@ const ProfileScreen = ({ navigation }: Props) => {
           <View style={styles.locationContainer}>
             <Ionicons name="location-outline" size={16} color="#E67012" />
             <Text style={[styles.location, { color: colors.muted }]} numberOfLines={1}>
-              {displayUser.location || 'Location not set'}
+              {displayUser.location || t('profile.locationNotSet')}
             </Text>
             <TouchableOpacity
               onPress={handleUpdateLocation}
               disabled={isLocLoading}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Update location"
+              accessibilityLabel={t('profile.updateLocation')}
             >
               <Ionicons
                 name={isLocLoading ? 'refresh' : 'refresh-outline'}
@@ -515,7 +517,7 @@ const ProfileScreen = ({ navigation }: Props) => {
             <View key={index} style={styles.statItem}>
               <Ionicons name={String(stat.icon)} size={24} color="#E67012" />
               <Text style={[styles.statValue, { color: isDark ? '#fff' : '#000' }]} numberOfLines={1}>{stat.value}</Text>
-              <TranslatedText style={[styles.statTitle, { color: isDark ? colors.muted : '#666' }]}>{stat.title}</TranslatedText>
+              <Text style={[styles.statTitle, { color: isDark ? colors.muted : '#666' }]} numberOfLines={1}>{stat.title}</Text>
             </View>
           ))}
         </View>
@@ -528,7 +530,7 @@ const ProfileScreen = ({ navigation }: Props) => {
           >
             <View style={styles.menuItemLeft}>
               <Ionicons name="language-outline" size={22} color="#E67012" />
-              <TranslatedText style={[styles.languageLabel, { color: isDark ? '#fff' : '#333' }]}>Language</TranslatedText>
+              <Text style={[styles.languageLabel, { color: isDark ? '#fff' : '#333' }]}>{t('settings.language')}</Text>
             </View>
             <View style={styles.languageRight}>
               <Text style={styles.languageValue}>{getLanguageName(language)}</Text>
@@ -545,8 +547,9 @@ const ProfileScreen = ({ navigation }: Props) => {
           onRequestClose={() => setIsLangModalVisible(false)}
         >
           <View style={styles.langModalOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
             <View style={[styles.langModalContent, isDark && { backgroundColor: '#1e1e1e' }]}>
-              <TranslatedText style={[styles.langModalTitle, { color: isDark ? '#fff' : '#000' }]}>Select Language</TranslatedText>
+              <Text style={[styles.langModalTitle, { color: isDark ? '#fff' : '#000' }]}>{t('profile.selectLanguageTitle')}</Text>
               <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
                 {ALL_LANGUAGES.map((code) => {
                   const active = pendingLang === code;
@@ -555,6 +558,8 @@ const ProfileScreen = ({ navigation }: Props) => {
                       key={code}
                       onPress={() => setPendingLang(code)}
                       style={[styles.langOption, active && styles.langOptionActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
                     >
                       <Text style={[styles.langOptionText, active && styles.langOptionTextActive]}>
                         {getLanguageName(code)}
@@ -566,7 +571,7 @@ const ProfileScreen = ({ navigation }: Props) => {
               </ScrollView>
               <View style={styles.langModalButtons}>
                 <TouchableOpacity onPress={() => setIsLangModalVisible(false)} style={styles.langCancelBtn}>
-                  <TranslatedText style={{ color: '#7e7d7d', fontWeight: '600' }}>Cancel</TranslatedText>
+                  <Text style={{ color: '#7e7d7d', fontWeight: '600' }}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 <LinearGradient
                   colors={['#FF9800', '#FF6D00']}
@@ -581,11 +586,12 @@ const ProfileScreen = ({ navigation }: Props) => {
                       setIsLangModalVisible(false);
                     }}
                   >
-                    <TranslatedText style={{ color: '#fff', fontWeight: 'bold' }}>Save</TranslatedText>
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>{t('common.save')}</Text>
                   </TouchableOpacity>
                 </LinearGradient>
               </View>
             </View>
+            </KeyboardAvoidingView>
           </View>
         </RNModal>
 
@@ -605,18 +611,18 @@ const ProfileScreen = ({ navigation }: Props) => {
                   color={
                     item.disabled 
                       ? '#ccc' 
-                      : item.title.includes('Logout') 
+                      : item.title === t('auth.logout') || item.title === t('profile.loggingOut')
                         ? '#FF3B30' 
                         : '#666'
                   } 
                 />
-                <TranslatedText style={[
+                <Text style={[
                   styles.menuItemText, { color: isDark ? colors.muted : "#333" },
-                  item.title.includes('Logout') && styles.logoutText,
+                  (item.title === t('auth.logout') || item.title === t('profile.loggingOut')) && styles.logoutText,
                   item.disabled && styles.disabledText
                 ]}>
                   {item.title}
-                </TranslatedText>
+                </Text>
               </View>
 
               {!item.disabled && <Ionicons name="chevron-forward" size={20} color="#E67012" />}

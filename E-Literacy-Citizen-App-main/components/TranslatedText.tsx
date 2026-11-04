@@ -6,8 +6,8 @@ import { useLanguage, I18N_LANGUAGES } from './LanguageContext';
 import { TranslationService } from './translation';
 import { keyForString } from '../i18n/stringCatalog';
 
-type TranslatedTextProps = TextProps & {
-  children: string | number | undefined | null;
+type TranslatedTextProps = Omit<TextProps, 'children'> & {
+  children?: React.ReactNode;
   fallbackToOriginal?: boolean;
 };
 
@@ -26,8 +26,12 @@ export const TranslatedText: React.FC<TranslatedTextProps> = ({
   const { t: translateKey } = useTranslation();
   const { colors } = useTheme();
 
-  const value = typeof children === 'number' ? String(children) : children ?? '';
-  const key = value ? keyForString(String(value)) : null;
+  // Only plain strings / numbers can go through the translation pipeline.
+  // Anything else (elements, fragments, arrays) is rendered as-is so nested
+  // JSX never leaks raw text outside a <Text> host component.
+  const isPlainValue = typeof children === 'string' || typeof children === 'number';
+  const value = isPlainValue ? String(children) : '';
+  const key = value ? keyForString(value) : null;
 
   // Synchronous static translation for known keys in bundled languages.
   const staticText =
@@ -51,10 +55,12 @@ export const TranslatedText: React.FC<TranslatedTextProps> = ({
     return () => { isMounted = false; };
   }, [value, language, staticText]);
 
-  const displayed = staticText ?? (language === 'en' ? children : dynamicText ?? (fallbackToOriginal ? children : null));
+  const displayed = !isPlainValue
+    ? children
+    : staticText ?? (language === 'en' ? children : dynamicText ?? (fallbackToOriginal ? children : null));
 
   return (
-    <Text {...rest} style={[{ color: colors.text }, rest.style]}>{displayed as any}</Text>
+    <Text {...rest} style={[{ color: colors.text }, rest.style]}>{displayed}</Text>
   );
 };
 
