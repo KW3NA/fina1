@@ -11,26 +11,43 @@ import { useTheme } from './ThemeContext';
 type BottomTabRouteProp = RouteProp<RootStackParamList, keyof RootStackParamList>;
 type BottomTabNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+// Screens that should show the tab bar with a given tab highlighted.
+// Maps screen route name -> index of the active tab.
+const TAB_ROUTES: Array<{ icon: string; label: string; route: keyof RootStackParamList }> = [
+  { icon: "house", label: "Home", route: "Home Screen" },
+  { icon: "book", label: "Learn", route: "Learn" },
+  { icon: "file-lines", label: "CV", route: "CVBuilder" },
+  { icon: "user", label: "Profile", route: "Profile" },
+];
+
+// Alias routes that belong under a main tab (e.g. Notifications lives under Home)
+const TAB_ALIASES: Record<string, number> = {
+  Notifications: 0,
+  TakeAssessmentsMenu: 0,
+  Tools: 0,
+};
+
 const BottomTabBar = () => {
   const navigation = useNavigation<BottomTabNavigationProp>();
   const route = useRoute<BottomTabRouteProp>();
   const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const bottomNav: { icon: string; label: string; route: keyof RootStackParamList }[] = [
-    { icon: "house", label: "Home", route: "Home Screen" }, // 'home' often becomes 'house' in FA6 solid style
-    { icon: "book", label: "Learn", route: "Learn" },
-    { icon: "file-lines", label: "CV", route: "CVBuilder" }, // 'file-alt' is 'file-lines' in FA6
-    { icon: "user", label: "Profile", route: "Profile" },
-  ];
+  const bottomNav = TAB_ROUTES;
 
-  const handleNavigation = (route: keyof RootStackParamList) => {
-  // navigation typing is strict; cast to any for dynamic route names used here
-  navigation.navigate(route as any);
+  const handleNavigation = (target: keyof RootStackParamList) => {
+    if (route.name === target) return; // already on this tab – avoid stacking duplicates
+    navigation.navigate(target as any);
   };
 
+  const activeIndex = (() => {
+    const idx = bottomNav.findIndex((t) => t.route === route.name);
+    if (idx !== -1) return idx;
+    return TAB_ALIASES[route.name] ?? -1;
+  })();
+
   const isActive = (itemRoute: keyof RootStackParamList) => {
-    return route.name === itemRoute;
+    return bottomNav.findIndex((t) => t.route === itemRoute) === activeIndex;
   };
 
   const inactiveDarkColor = '#a0a0a0ff'; // light shade of the primary orange for dark mode

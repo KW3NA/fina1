@@ -21,6 +21,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useLanguage, getLanguageName, SupportedLanguage } from '../../components/LanguageContext';
 import TranslatedText from '../../components/TranslatedText';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Get screen dimensions for responsive design
 const { width, height } = Dimensions.get('window');
@@ -243,12 +244,36 @@ type OnboardingNavigationProp = NativeStackNavigationProp<RootStackParamList, 'O
 
 // Main Onboarding Screen component
 export default function OnboardingScreen() {
+  const navigation = useNavigation<OnboardingNavigationProp>(); // Get the navigation object
+  const { language, setLanguage, t } = useLanguage();
+
+  // Skip onboarding entirely for returning users: once they have completed it
+  // (or logged in) we jump straight to Login instead of replaying the slides.
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.multiGet(['@onboarding_completed', 'token'])
+      .then((entries) => {
+        if (cancelled) return;
+        const map = new Map(entries);
+        if (map.get('@onboarding_completed') === 'true' || map.get('token')) {
+          navigation.navigate('Login');
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [navigation]);
+
+  const finishOnboarding = React.useCallback(() => {
+    AsyncStorage.setItem('@onboarding_completed', 'true').catch(() => {});
+    navigation.navigate('Login');
+  }, [navigation]);
+
+  const handleSkipPress = () => finishOnboarding();
+
   const [currentStep, setCurrentStep] = useState<number>(0); // State for current onboarding step
   const fadeAnim = useRef(new Animated.Value(1)).current; // Animated value for fade effect
   const slideAnim = useRef(new Animated.Value(0)).current; // Animated value for slide effect
   const scrollRef = useRef<ScrollView>(null); // Ref for ScrollView to scroll to top
-  const navigation = useNavigation<OnboardingNavigationProp>(); // Get the navigation object
-  const { language, setLanguage, t } = useLanguage();
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>(language);
 
   // Add state for translated step text
@@ -336,7 +361,7 @@ export default function OnboardingScreen() {
     } else {
       // This is the last step, navigate to Login_SignUp
       // Changed 'Login_SignUp' to 'Login' based on App.js route name
-      navigation.navigate('Login');
+      finishOnboarding();
     }
   };
 
@@ -406,7 +431,7 @@ export default function OnboardingScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.cardContainer}>
-            <TouchableOpacity  style={{marginLeft: "auto", marginBottom: 10}}onPress={() => handleSkip(navigation)}>
+            <TouchableOpacity  style={{marginLeft: "auto", marginBottom: 10}}onPress={handleSkipPress}>
           <TranslatedText style={{ color: '#E67012', fontWeight: 'bold', fontSize: 18 }}>Skip</TranslatedText>
         </TouchableOpacity>
             {/* Progress Section */}

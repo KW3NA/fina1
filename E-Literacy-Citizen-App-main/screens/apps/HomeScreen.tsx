@@ -15,12 +15,15 @@ import { useTheme } from '../../components/ThemeContext';
 import { useAuthGuard } from '../../src/hooks/useAuthGuard';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../../config/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 
 
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home Screen'>;
+
+const roleIsAdmin = (role?: string | null) => role === 'admin' || role === 'superadmin';
 
 const HomeScreen = ({ navigation }: Props) => {
   const { colors, isDark } = useTheme();
@@ -29,9 +32,40 @@ const HomeScreen = ({ navigation }: Props) => {
   const [showNameModal, setShowNameModal] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [notificationCount, setNotificationCount] = useState(3);
+  const [savingName, setSavingName] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
     const { user, loading, signOut, refreshMe } = useAuthGuard(navigation);
   const username = user?.name ?? "-";
+
+  // Admin detection — checks the Supabase users table (role admin/superadmin)
+  // and caches the result per email in AsyncStorage for instant look on relaunch.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@cached_user');
+        const cached = raw ? JSON.parse(raw) : null;
+        const email = user?.email ?? cached?.email;
+        if (!email) return;
+        const cacheKey = `@is_admin:${email}`;
+        const cachedFlag = await AsyncStorage.getItem(cacheKey);
+        if (cachedFlag !== null) {
+          setIsAdmin(cachedFlag === 'true');
+          if (cachedFlag === 'true') return;
+        }
+        const { data } = await supabase
+          .from('users')
+          .select('role')
+          .eq('email', email)
+          .maybeSingle();
+        const admin = roleIsAdmin(data?.role);
+        await AsyncStorage.setItem(cacheKey, String(admin));
+        setIsAdmin(admin);
+      } catch {
+        /* offline / lookup failure — stay non-admin */
+      }
+    })();
+  }, [user?.email]);
   const avatarUri = user?.profile_picture_url ?? 'https://i.pravatar.cc/200?u=fallback';
   
   const currentDate = new Date().toLocaleDateString("en-GB", {
@@ -40,18 +74,55 @@ const HomeScreen = ({ navigation }: Props) => {
     year: "numeric",
   });
 
+  // Load real skill progress + unread notifications from Supabase enrollments
+  const loadProgress = React.useCallback(async () => {
+    try {
+      const userId = user?.id;
+      if (!userId) return;
+      const { data: enr } = await supabase
+        .from('enrollments')
+        .select('progress')
+        .eq('user_id', userId);
+      if (enr && enr.length > 0) {
+        const avg = Math.round(
+          enr.reduce((s, e) => s + (e.progress ?? 0), 0) / enr.length
+        );
+        setProgress(avg);
+      } else {
+        setProgress(0);
+      }
+    } catch {
+      /* keep current value on network failure */
+    }
+  }, [user?.id]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setProgress(78);
-    }, 500);
-    return () => clearTimeout(timer);
+    loadProgress();
+  }, [loadProgress]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@unread_notifications');
+        const n = raw ? parseInt(raw, 10) : 3;
+        setNotificationCount(Number.isFinite(n) ? n : 0);
+      } catch {
+        /* ignore */
+      }
+    })();
   }, []);
 
-  
   useFocusEffect(
     React.useCallback(() => {
       refreshMe().catch(() => { });
-    }, [refreshMe])
+      loadProgress();
+      AsyncStorage.getItem('@unread_notifications').then((raw) => {
+        if (raw !== null) {
+          const n = parseInt(raw, 10);
+          setNotificationCount(Number.isFinite(n) ? n : 0);
+        }
+      }).catch(() => { });
+    }, [refreshMe, loadProgress])
   );
 
   useEffect(() => {
@@ -139,7 +210,18 @@ const HomeScreen = ({ navigation }: Props) => {
       desc: "Explore extra features that enhance your learning experience",
       bgColor: '#e3fde9ff',
       iconColor: "#21a55cff",
-    }
+    },
+    ...(isAdmin
+      ? [
+          {
+            icon: "chart-line",
+            title: "Admin Dashboard",
+            desc: "View reports and manage learners, practitioners and courses",
+            bgColor: '#EDE7F6',
+            iconColor: '#6D28D9',
+          },
+        ]
+      : []),
   ];
 
   // Dark-mode card background overrides (user-specified)
@@ -148,6 +230,7 @@ const HomeScreen = ({ navigation }: Props) => {
     'Learning Hub': '#4a3453',
     'Build My CV': '#234455',
     'Explore Tools': '#235539ff',
+    'Admin Dashboard': '#3b2f55',
   };
 
   const recentActivities: {
@@ -257,6 +340,8 @@ const HomeScreen = ({ navigation }: Props) => {
                 ? () => navigation.navigate('CVBuilder')
                 : item.title === "Explore Tools"
                 ? () => navigation.navigate("Tools")
+                : item.title === 'Admin Dashboard'
+                ? () => navigation.navigate('AdminDashboard')
                 : undefined
             }
           >
@@ -313,12 +398,33 @@ const HomeScreen = ({ navigation }: Props) => {
             />
             
             <TouchableOpacity 
-            
-              style={[styles.saveButton, { backgroundColor: colors.primary }]}
-              onPress={() => {
-                console.log('Name:', firstName, lastName);
-                Alert.alert('Details Saved', `Welcome, ${firstName}!`);
-                setShowNameModal(false);
+              disabled={!firstName.trim() || savingName}
+              style={[styles.saveButton, { backgroundColor: colors.primary }, !firstName.trim() && { opacity: 0.6 }]}
+              onPress={async () => {
+                const trimmed = firstName.trim();
+                if (!trimmed) return;
+                try {
+                  setSavingName(true);
+                  if (user?.id) {
+                    await supabase
+                      .from('users')
+                      .update({ name: trimmed, updated_at: new Date().toISOString() })
+                      .eq('id', user.id);
+                  }
+                  const cached = await AsyncStorage.getItem('user');
+                  if (cached) {
+                    const u = JSON.parse(cached);
+                    u.name = trimmed;
+                    await AsyncStorage.setItem('user', JSON.stringify(u));
+                  }
+                  await refreshMe().catch(() => { });
+                  setShowNameModal(false);
+                  Alert.alert('Details Saved', `Welcome, ${trimmed}!`);
+                } catch {
+                  Alert.alert('Something went wrong', 'Could not save your name. Please try again.');
+                } finally {
+                  setSavingName(false);
+                }
               }}
             >
                <LinearGradient

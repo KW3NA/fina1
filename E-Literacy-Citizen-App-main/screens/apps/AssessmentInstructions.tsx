@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
 import TranslatedText from '../../components/TranslatedText';
 import { LinearGradient } from 'expo-linear-gradient';
+import ProctorGate from '../../components/ProctorOverlay';
 
 const AssessmentInstructions = ({ navigation, route }: any) => {
   const { colors } = useTheme();
   const assessment = route?.params?.assessment;
+  const [proctored, setProctored] = useState(false);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -60,11 +62,17 @@ const AssessmentInstructions = ({ navigation, route }: any) => {
               Get an average of 80% to receive your certificate of completion.
             </TranslatedText>
           </View>
+          <View style={styles.infoItem}>
+            <FontAwesome6 name="video" size={20} color="#FF5252" />
+            <TranslatedText style={[styles.infoText, { color: colors.text }]}>
+              This assessment is PROCTORED — your camera and microphone must stay ON for the entire test. You cannot answer any question without an active camera session.
+            </TranslatedText>
+          </View>
         </View>
 
         <TouchableOpacity 
           style={styles.startButton}
-          onPress={() => navigation.navigate('Assessment', { assessment })}
+          onPress={() => setProctored(true)}
         >
           <LinearGradient
             colors={['#FF9800', '#FF6D00']}
@@ -74,8 +82,39 @@ const AssessmentInstructions = ({ navigation, route }: any) => {
           />
           <TranslatedText style={styles.startButtonText}>Start Assessment</TranslatedText>
         </TouchableOpacity>
+
+        {/* Mandatory camera + mic proctor gate — blocks the assessment until live */}
+        {proctored && (
+          <ProctorGate>
+            <AssessmentProctoredView
+              assessment={assessment}
+              onNavigate={(navProps: any) => navigation.navigate('Assessment', navProps)}
+            />
+          </ProctorGate>
+        )}
       </View>
     </SafeAreaView>
+  );
+};
+
+// Small inner screen shown inside the proctor overlay once camera+mic are live.
+const AssessmentProctoredView = ({ assessment, onNavigate }: any) => {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+      <FontAwesome6 name="shield-halved" size={44} color="#4CAF50" style={{ marginBottom: 16 }} />
+      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
+        Proctor session is LIVE
+      </Text>
+      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+        Your camera and microphone are recording. Do not cover the camera or leave this screen during the assessment.
+      </Text>
+      <TouchableOpacity
+        style={{ backgroundColor: '#4CAF50', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 10 }}
+        onPress={() => onNavigate({ assessment, proctored: true })}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Begin Proctored Assessment</Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 

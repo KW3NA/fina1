@@ -14,6 +14,9 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { TranslatedText } from '../../components/TranslatedText';
 import { useTheme } from '../../components/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import ProctorGate from '../../components/ProctorOverlay';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../../config/supabase';
 
 // Mock questions data - replace with actual data from your state management
 const mockQuestions = {
@@ -104,7 +107,7 @@ const mockQuestions = {
 };
 
 const AssessmentScreen = ({ route, navigation }) => {
-  const { assessment } = route.params;
+  const { assessment, proctored } = route.params;
   const { colors } = useTheme();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -166,6 +169,39 @@ const AssessmentScreen = ({ route, navigation }) => {
               answers, 
               questions 
             });
+
+            // Persist the attempt to Supabase (quiz_attempts) so Admin Dashboard
+            // > Reports reflects real assessment data. Best-effort, never blocks.
+            (async () => {
+              try {
+                let userId: string | null = null;
+                const raw = await AsyncStorage.getItem('user');
+                const cached = raw ? JSON.parse(raw) : null;
+                if (cached?.id) userId = cached.id;
+                if (!userId && cached?.email) {
+                  const { data } = await supabase.from('users').select('id').eq('email', cached.email).maybeSingle();
+                  userId = data?.id ?? null;
+                }
+                if (!userId) return;
+                const total = questions.length || 1;
+                const correct = questions.filter((q: any) => {
+                  const a = answers[q.id];
+                  if (a === undefined || a === null) return false;
+                  if (typeof q.correctAnswer !== 'undefined') {
+                    return String(a).toLowerCase() === String(q.correctAnswer).toLowerCase();
+                  }
+                  return false;
+                }).length;
+                const scorePct = Math.round((correct / total) * 100);
+                await supabase.from('quiz_attempts').insert({
+                  user_id: userId,
+                  score: scorePct,
+                  passed: scorePct >= 70,
+                });
+              } catch (err) {
+                console.log('Failed to save assessment attempt:', err);
+              }
+            })();
           }
         }
       ]
@@ -329,6 +365,7 @@ const AssessmentScreen = ({ route, navigation }) => {
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
+    <ProctorGate active={!!proctored}>
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
@@ -426,6 +463,7 @@ const AssessmentScreen = ({ route, navigation }) => {
         </View>
       </Modal>
     </SafeAreaView>
+    </ProctorGate>
   );
 };
 

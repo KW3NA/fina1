@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Linking,
   Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { TranslatedText } from '../../components/TranslatedText';
 import { useTheme } from '../../components/ThemeContext';
@@ -90,6 +91,46 @@ const NotificationsScreen = ({ navigation }) => {
   const { colors, isDark } = useTheme();
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [showOpportunityModal, setShowOpportunityModal] = useState(false);
+  const [notifications, setNotifications] = useState(mockNotifications);
+
+  // Persist read/unread state so the Home bell badge stays in sync
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@notifications_read');
+        if (raw) {
+          const saved = JSON.parse(raw);
+          setNotifications((prev) =>
+            prev.map((n) => ({ ...n, read: saved[n.id] ?? n.read }))
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  const persistReadState = (list) => {
+    const unread = list.filter((n) => !n.read).length;
+    const map: Record<number, boolean> = {};
+    list.forEach((n) => { map[n.id] = n.read; });
+    AsyncStorage.setItem('@notifications_read', JSON.stringify(map)).catch(() => { });
+    AsyncStorage.setItem('@unread_notifications', String(unread)).catch(() => { });
+  };
+
+  const markAsRead = (id) => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+      persistReadState(next);
+      return next;
+    });
+  };
+
+  const clearAll = () => {
+    const empty = [];
+    setNotifications(empty);
+    AsyncStorage.setItem('@unread_notifications', '0').catch(() => { });
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -118,6 +159,7 @@ const NotificationsScreen = ({ navigation }) => {
             opacity: notification.read ? 0.7 : 1,
           },
         ]}
+        onPress={() => markAsRead(notification.id)}
       >
         <View style={styles.notificationContent }>
           <View style={styles.notificationHeader}>
@@ -152,15 +194,15 @@ const NotificationsScreen = ({ navigation }) => {
           <FontAwesome6 name="arrow-left" size={20} color="#E67012" />
         </TouchableOpacity>
         <TranslatedText style={styles.headerTitle}>Notifications</TranslatedText>
-        <TouchableOpacity style={styles.clearButton}>
+        <TouchableOpacity style={styles.clearButton} onPress={clearAll}>
           <Text style={[styles.clearButtonText, { color: colors.muted }]}>Clear All</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {mockNotifications.length > 0 ? (
+        {notifications.length > 0 ? (
           <View style={styles.notificationsList}>
-            {mockNotifications.map(renderNotification)}
+            {notifications.map(renderNotification)}
           </View>
         ) : (
           <View style={styles.emptyState}>

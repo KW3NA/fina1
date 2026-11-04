@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../components/ThemeContext';
 import TranslatedText from '../../components/TranslatedText';
 import { supabase } from '../../config/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import NativeAd from '../../components/NativeAd';
+import ProctorGate from '../../components/ProctorOverlay';
 
 const Quiz = ({ navigation, route }: any) => {
-  const { courseId } = route.params || {};
+  const { courseId, proctored } = route.params || {};
   const { colors, isDark } = useTheme();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
@@ -148,6 +150,39 @@ const Quiz = ({ navigation, route }: any) => {
     setShowFinalResult(true);
   };
 
+  // Persist the finished quiz attempt to Supabase (quiz_attempts table) so the
+  // Admin Dashboard > Reports tab shows real data. Best-effort: failures are
+  // logged but never block the result screen.
+  useEffect(() => {
+    if (!showFinalResult) return;
+    (async () => {
+      try {
+        let userId: string | null = null;
+        try {
+          const raw = await AsyncStorage.getItem('user');
+          const cached = raw ? JSON.parse(raw) : null;
+          if (cached?.id) userId = cached.id;
+          if (!userId && cached?.email) {
+            const { data } = await supabase.from('users').select('id').eq('email', cached.email).maybeSingle();
+            userId = data?.id ?? null;
+          }
+        } catch {}
+        if (!userId) return;
+        const total = questions.length || 1;
+        const scorePct = Math.round((score / total) * 100);
+        await supabase.from('quiz_attempts').insert({
+          user_id: userId,
+          course_id: courseId ?? null,
+          score: scorePct,
+          passed: scorePct >= 70,
+        });
+      } catch (err) {
+        console.log('Failed to save quiz attempt:', err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFinalResult]);
+
   if (showResult && showFinalResult) {
     return (
       <SafeAreaView style={{ alignItems: "center",  flex: 1, padding: 20,backgroundColor: isDark ? '#1c1c1e' : colors.background }}>
@@ -206,6 +241,7 @@ const Quiz = ({ navigation, route }: any) => {
   }
 
   return (
+    <ProctorGate active={proctored !== false}>
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TranslatedText style={[styles.headerTitle, { color: colors.primary }]}>
@@ -297,6 +333,7 @@ const Quiz = ({ navigation, route }: any) => {
         onClose={handleAdClose}
       />
     </SafeAreaView>
+    </ProctorGate>
   );
 };
 

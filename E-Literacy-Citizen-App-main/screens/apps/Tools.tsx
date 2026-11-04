@@ -20,25 +20,23 @@ const Tools = ({ navigation }) => {
   const { colors, isDark } = useTheme();
   const [showARMenu, setShowARMenu] = useState(false);
 
-  // ARMenu items for two AR environments
+  // ARMenu items — all launch the E-Lit AR experience in a fullscreen webview
+  // (camera permission is requested by WebViewScreen before the AR session starts)
+  const AR_URL = 'https://e-lit-ar.netlify.app';
   const arMenuItems = [
     {
       id: 'ar1',
       title: 'Explore Computers',
       icon: 'computer',
       gradient: ['#667eea', '#764ba2'],
-      action: () => navigation.navigate('WebView Screen', {
-        uri: 'https://player.onirix.com/projects/00f2461d474747c2a1c6ce319f63ba88/webar?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjc2ODY2LCJwcm9qZWN0SWQiOjEyNDUwMSwicm9sZSI6MywiaWF0IjoxNzU5MzQ2MjQyfQ.ByWmN_Hgbak6W__DVqnFHd7l1npgGgPvRB4k7dzMEEA&background=alpha&preview=false&hide_controls=false&ar_button=false'
-      }),
+      action: () => navigation.navigate('WebView Screen', { uri: AR_URL, title: 'AR Environment' }),
     },
     {
       id: 'ar2',
       title: 'Writing an Email',
-      icon: 'car',
+      icon: 'envelope',
       gradient: ['#f093fb', '#f5576c'],
-      action: () => navigation.navigate('WebView Screen', {
-        uri: 'https://webar.onirix.com/projects/638838423f374f36946b8a87e897e0c3/webar?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjU0MzMxLCJwcm9qZWN0SWQiOjExMjQ3MSwicm9sZSI6MywiaWF0IjoxNzQ3OTUzMzAwfQ.8g5kVFKGhPz5diwFxHXAtdlDCE4Ylz15_kDjZYJ5YC0&background=%23E3E1E5&preview=false&hide_controls=false&ar_button=false'
-      }),
+      action: () => navigation.navigate('WebView Screen', { uri: AR_URL, title: 'AR Environment' }),
     },
   ];
 

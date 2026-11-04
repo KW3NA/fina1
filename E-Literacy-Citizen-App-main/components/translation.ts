@@ -25,6 +25,11 @@ export class TranslationService {
     this.apiKey = apiKey;
   }
 
+  // Whether an API key has been configured for live (dynamic) translation.
+  static isInitialized() {
+    return this.apiKey !== null;
+  }
+
   static async translateText(
     text: string,
     to: LangCode,
