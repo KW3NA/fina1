@@ -7,9 +7,10 @@ import TranslatedText from '../../components/TranslatedText';
 import { supabase } from '../../config/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import NativeAd from '../../components/NativeAd';
+import ProctorGate from '../../components/ProctorOverlay';
 
 const Quiz = ({ navigation, route }: any) => {
-  const { courseId } = route.params || {};
+  const { courseId, proctored } = route.params || {};
   const { colors, isDark } = useTheme();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
@@ -206,6 +207,7 @@ const Quiz = ({ navigation, route }: any) => {
   }
 
   return (
+    <ProctorGate active={proctored !== false}>
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TranslatedText style={[styles.headerTitle, { color: colors.primary }]}>
@@ -297,6 +299,7 @@ const Quiz = ({ navigation, route }: any) => {
         onClose={handleAdClose}
       />
     </SafeAreaView>
+    </ProctorGate>
   );
 };
 

@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
 import TranslatedText from '../../components/TranslatedText';
 import {LinearGradient} from 'expo-linear-gradient';
+import ProctorGate from '../../components/ProctorOverlay';
 
 const QuizInstructions = ({ navigation, route }: any) => {
   const { colors } = useTheme();
   const { courseId } = route.params || {};
+  const [proctored, setProctored] = useState(false);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -53,11 +55,17 @@ const QuizInstructions = ({ navigation, route }: any) => {
               Score will be calculated at the end
             </TranslatedText>
           </View>
+          <View style={styles.infoItem}>
+            <FontAwesome5 name="video" size={20} color="#FF5252" />
+            <TranslatedText style={[styles.infoText, { color: colors.text }]}>
+              This quiz is PROCTORED — camera and microphone are mandatory. You cannot answer without an active camera session.
+            </TranslatedText>
+          </View>
         </View>
 
         <TouchableOpacity 
           style={styles.startButton}
-          onPress={() => navigation.navigate('Quiz', { courseId })}
+          onPress={() => setProctored(true)}
         >
              <LinearGradient
                         colors={['#FF9800', '#FF6D00']}
@@ -67,6 +75,27 @@ const QuizInstructions = ({ navigation, route }: any) => {
                       />
           <TranslatedText style={styles.startButtonText}>Start Quiz</TranslatedText>
         </TouchableOpacity>
+
+        {/* Mandatory camera + mic proctor gate */}
+        {proctored && (
+          <ProctorGate>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+              <FontAwesome5 name="shield-alt" size={44} color="#4CAF50" style={{ marginBottom: 16 }} />
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
+                Proctor session is LIVE
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+                Your camera and microphone are recording. Do not cover the camera or leave this screen during the quiz.
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: '#4CAF50', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 10 }}
+                onPress={() => navigation.navigate('Quiz', { courseId, proctored: true })}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Begin Proctored Quiz</Text>
+              </TouchableOpacity>
+            </View>
+          </ProctorGate>
+        )}
       </View>
     </SafeAreaView>
   );

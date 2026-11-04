@@ -14,6 +14,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { TranslatedText } from '../../components/TranslatedText';
 import { useTheme } from '../../components/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import ProctorGate from '../../components/ProctorOverlay';
 
 // Mock questions data - replace with actual data from your state management
 const mockQuestions = {
@@ -104,7 +105,7 @@ const mockQuestions = {
 };
 
 const AssessmentScreen = ({ route, navigation }) => {
-  const { assessment } = route.params;
+  const { assessment, proctored } = route.params;
   const { colors } = useTheme();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -329,6 +330,7 @@ const AssessmentScreen = ({ route, navigation }) => {
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
+    <ProctorGate active={!!proctored}>
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
@@ -426,6 +428,7 @@ const AssessmentScreen = ({ route, navigation }) => {
         </View>
       </Modal>
     </SafeAreaView>
+    </ProctorGate>
   );
 };
 
