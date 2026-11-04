@@ -1,0 +1,21 @@
+#view-detailed-stats:hover, #download-report:hover{
+    cursor: pointer;
+    transform: scale(1.05);
+    transition: transform 0.3s ease;
+}
+#toggle-menu-icon:hover{
+cursor: pointer;
+}
+#toggle-menu-icon{
+    margin-right: 5px;
+}
+#logo-text{
+    font-size: 1.2rem;
+    margin-right: 30px;
+}
+#settings-container{
+    margin-left: 11em;
+}
+#profile-image{
+    object-fit: cover;
+}

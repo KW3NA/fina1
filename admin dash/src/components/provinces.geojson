@@ -1,0 +1,77 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Gauteng" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[28.0,-26.0],[28.5,-26.0],[28.5,-26.5],[28.0,-26.5],[28.0,-26.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Western Cape" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[18.0,-33.5],[19.0,-33.5],[19.0,-34.0],[18.0,-34.0],[18.0,-33.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "KwaZulu-Natal" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[31.0,-29.0],[32.0,-29.0],[32.0,-30.0],[31.0,-30.0],[31.0,-29.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Eastern Cape" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[26.0,-32.0],[27.0,-32.0],[27.0,-33.0],[26.0,-33.0],[26.0,-32.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Free State" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[26.0,-28.0],[27.0,-28.0],[27.0,-29.0],[26.0,-29.0],[26.0,-28.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "North West" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[25.0,-25.5],[26.0,-25.5],[26.0,-26.5],[25.0,-26.5],[25.0,-25.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Mpumalanga" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[30.0,-25.0],[31.0,-25.0],[31.0,-26.0],[30.0,-26.0],[30.0,-25.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Northern Cape" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[22.0,-28.0],[23.0,-28.0],[23.0,-29.0],[22.0,-29.0],[22.0,-28.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Limpopo" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[29.0,-23.0],[30.0,-23.0],[30.0,-24.0],[29.0,-24.0],[29.0,-23.0]]]
+      }
+    }
+  ]
+}
