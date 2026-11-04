@@ -18,9 +18,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons'; // Import FontAwesome6 for icons
 import { useNavigation } from '@react-navigation/native'; // Import useNavigation hook from React Navigation
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../../navigation/types';
-import { useLanguage, getLanguageName, SupportedLanguage } from '../../components/LanguageContext';
-import TranslatedText from '../../components/TranslatedText';
+import { useLanguage, SupportedLanguage } from '../../components/LanguageContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Get screen dimensions for responsive design
@@ -63,63 +63,63 @@ const languageOptions: { code: SupportedLanguage; label: string }[] = [
   { code: 'ss', label: 'Swati' },
 ];
 
-// Define the onboarding steps data
+// Define the onboarding steps data.
+// Every string here is an i18n key path into the static locale bundles
+// (i18n/locales/*.ts -> `onboardingExtra.*` / `common.*`), so switching the
+// language instantly re-renders ALL onboarding content in the new language —
+// no async translation round-trips required.
 const onboardingSteps: OnboardingStep[] = [
   {
     id: 0,
-    title: 'Select Your Language',
-    subtitle: 'Choose the language you want to use the app in',
-    description: 'You can change this later in your profile.',
+    title: 'onboardingExtra.selectLanguage',
+    subtitle: 'onboardingExtra.selectLanguageSubtitle',
+    description: 'onboardingExtra.selectLanguageDesc',
     icon: 'language',
     colors: ['#E67012', '#f59e0b'],
   },
   {
     id: 1,
-    title: "Welcome to E-Literacy",
-    subtitle: "Master essential digital skills for the modern world",
-    description:
-      "Join thousands of learners developing crucial digital literacy skills.",
+    title: 'onboardingExtra.welcomeTitle',
+    subtitle: 'onboardingExtra.welcomeSubtitle',
+    description: 'onboardingExtra.welcomeDesc',
     icon: 'star-of-life', // 'sparkles' is not a valid FA6 icon, using a replacement
     colors: ['#E67012', '#f59e0b'], // Orange gradient (will use first color as solid)
   },
   {
     id: 2,
-    title: "Choose Your Learning Path",
-    subtitle: "What digital skills do you want to master?",
-    description:
-      "Select the digital literacy areas that interest you most.",
+    title: 'onboardingExtra.pathTitle',
+    subtitle: 'onboardingExtra.pathSubtitle',
+    description: 'onboardingExtra.pathDesc',
     icon: 'book-open', // FontAwesome6 icon name
     colors: ['#ea580c', '#ef4444'], // Red-orange gradient (will use first color as solid)
     options: [
-      { name: "Basic Computer Skills", icon: 'brain', popular: true }, // FontAwesome6 icon name
-      { name: "Internet & Email", icon: 'bullhorn', popular: false }, // Using 'bullhorn' for communication
-      { name: "Digital Safety & Security", icon: 'briefcase', popular: true }, // Using 'briefcase' for security
-      { name: "Social Media & Communication", icon: 'users', popular: false }, // FontAwesome6 icon name
-      { name: "Online Banking & Shopping", icon: 'chart-simple', popular: false }, // Using 'chart-simple' for finance
-      { name: "Digital Creativity", icon: 'palette', popular: false }, // Using 'palette' for creativity
+      { name: 'onboardingExtra.optBasicComputer', icon: 'brain', popular: true },
+      { name: 'onboardingExtra.optInternetEmail', icon: 'bullhorn', popular: false },
+      { name: 'onboardingExtra.optDigitalSafety', icon: 'briefcase', popular: true },
+      { name: 'onboardingExtra.optSocialMedia', icon: 'users', popular: false },
+      { name: 'onboardingExtra.optOnlineBanking', icon: 'chart-simple', popular: false },
+      { name: 'onboardingExtra.optDigitalCreativity', icon: 'palette', popular: false },
     ],
   },
   {
     id: 3,
-    title: "Learning Commitment",
-    subtitle: "How much time can you dedicate to learning?",
-    description:
-      "Choose a learning pace that fits your lifestyle.",
+    title: 'onboardingExtra.commitmentTitle',
+    subtitle: 'onboardingExtra.commitmentSubtitle',
+    description: 'onboardingExtra.commitmentDesc',
     icon: 'hourglass-half', // FontAwesome6 icon name for commitment/time
     colors: ['#f59e0b', '#f97316'], // Orange gradient (will use first color as solid)
     timeOptions: [
-      { duration: "Quick Sessions (15-30 min/day)", description: "Perfect for busy schedules", recommended: false },
-      { duration: "Standard Learning (45-60 min/day)", description: "Most popular learning pace", recommended: true },
-      { duration: "Intensive Learning (1-2 hours/day)", description: "Fast-track your digital skills", recommended: false },
-      { duration: "Self-paced", description: "Learn at your own rhythm", recommended: false },
+      { duration: 'onboardingExtra.timeQuick', description: 'onboardingExtra.timeQuickDesc', recommended: false },
+      { duration: 'onboardingExtra.timeStandard', description: 'onboardingExtra.timeStandardDesc', recommended: true },
+      { duration: 'onboardingExtra.timeIntensive', description: 'onboardingExtra.timeIntensiveDesc', recommended: false },
+      { duration: 'onboardingExtra.timeSelfPaced', description: 'onboardingExtra.timeSelfPacedDesc', recommended: false },
     ],
   },
   {
     id: 4,
-    title: "Ready to Build Digital Confidence!",
-    subtitle: "Start your digital literacy journey today",
-    description:
-      "Access interactive lessons, practical exercises, and real-world digital scenarios designed to make you confident and competent in the digital age.",
+    title: 'onboardingExtra.readyTitle',
+    subtitle: 'onboardingExtra.readySubtitle',
+    description: 'onboardingExtra.readyDesc',
     icon: 'trophy', // FontAwesome6 icon name
     colors: ['#ef4444', '#ea580c'], // Red-orange gradient (will use first color as solid)
   },
@@ -245,7 +245,12 @@ type OnboardingNavigationProp = NativeStackNavigationProp<RootStackParamList, 'O
 // Main Onboarding Screen component
 export default function OnboardingScreen() {
   const navigation = useNavigation<OnboardingNavigationProp>(); // Get the navigation object
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage } = useLanguage();
+  // Synchronous i18next translation. Because the LanguageProvider keeps the
+  // i18next instance in sync with the selected language (syncI18nLanguage),
+  // every useTranslation() consumer re-renders immediately when the user
+  // picks a new language — the whole onboarding flow switches at once.
+  const { t } = useTranslation();
 
   // Skip onboarding entirely for returning users: once they have completed it
   // (or logged in) we jump straight to Login instead of replaying the slides.
@@ -276,45 +281,13 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<ScrollView>(null); // Ref for ScrollView to scroll to top
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>(language);
 
-  // Add state for translated step text
-  const [translatedTitle, setTranslatedTitle] = useState('');
-  const [translatedSubtitle, setTranslatedSubtitle] = useState('');
-  const [translatedDescription, setTranslatedDescription] = useState('');
-  // For options and timeOptions
-  const [translatedOptions, setTranslatedOptions] = useState<string[]>([]);
-  const [translatedTimeDurations, setTranslatedTimeDurations] = useState<string[]>([]);
-  const [translatedTimeDescriptions, setTranslatedTimeDescriptions] = useState<string[]>([]);
-  const [translatedBadge, setTranslatedBadge] = useState('');
-  const [translatedRecommended, setTranslatedRecommended] = useState('');
-
   // Get current step data
   const step = onboardingSteps[currentStep];
 
+  // Re-sync the highlighted language card if the app language changes elsewhere.
   useEffect(() => {
-    // Translate main step text
-    t(step.title).then(setTranslatedTitle);
-    t(step.subtitle).then(setTranslatedSubtitle);
-    t(step.description).then(setTranslatedDescription);
-    // Translate options if present
-    if (step.options) {
-      Promise.all(step.options.map(opt => t(opt.name))).then(setTranslatedOptions);
-      setTranslatedBadge('');
-      t('High Demand').then(setTranslatedBadge);
-    } else {
-      setTranslatedOptions([]);
-      setTranslatedBadge('');
-    }
-    // Translate timeOptions if present
-    if (step.timeOptions) {
-      Promise.all(step.timeOptions.map(opt => t(opt.duration))).then(setTranslatedTimeDurations);
-      Promise.all(step.timeOptions.map(opt => t(opt.description))).then(setTranslatedTimeDescriptions);
-      t('Most Popular').then(setTranslatedRecommended);
-    } else {
-      setTranslatedTimeDurations([]);
-      setTranslatedTimeDescriptions([]);
-      setTranslatedRecommended('');
-    }
-  }, [step, t]);
+    setSelectedLanguage(language);
+  }, [language]);
 
   // Function to navigate to the next step
   const nextStep = () => {
@@ -431,15 +404,15 @@ export default function OnboardingScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.cardContainer}>
-            <TouchableOpacity  style={{marginLeft: "auto", marginBottom: 10}}onPress={handleSkipPress}>
-          <TranslatedText style={{ color: '#E67012', fontWeight: 'bold', fontSize: 18 }}>Skip</TranslatedText>
-        </TouchableOpacity>
+            <TouchableOpacity style={{ marginLeft: 'auto', marginBottom: 10 }} onPress={handleSkipPress}>
+              <Text style={{ color: '#E67012', fontWeight: 'bold', fontSize: 18 }}>{t('common.skip')}</Text>
+            </TouchableOpacity>
             {/* Progress Section */}
             <View style={styles.progressSection}>
               <View style={styles.progressHeader}>
-                <TranslatedText style={styles.progressText}>
-                  Step {currentStep + 1} of {onboardingSteps.length}
-                </TranslatedText>
+                <Text style={styles.progressText}>
+                  {t('onboardingExtra.stepOf', { current: currentStep + 1, total: onboardingSteps.length })}
+                </Text>
                 <Text style={styles.progressText}>{Math.round(progress)}%</Text>
               </View>
               <ProgressBar progress={progress} />
@@ -457,7 +430,7 @@ export default function OnboardingScreen() {
               ]}
             >
                 {/* Show logo only on the 'Welcome to E-Literacy' step, otherwise show the step icon */}
-                {step.title === 'Welcome to E-Literacy' ? (
+                {step.id === 1 ? (
                   <Image
                     source={require('../../assets/logo.jpg')}
                     style={styles.welcomeImage}
@@ -474,13 +447,13 @@ export default function OnboardingScreen() {
                 )}
 
               {/* Title */}
-              <Text style={styles.title}>{translatedTitle || step.title}</Text>
+              <Text style={styles.title}>{t(step.title)}</Text>
 
               {/* Subtitle */}
-              <Text style={styles.subtitle}>{translatedSubtitle || step.subtitle}</Text>
+              <Text style={styles.subtitle}>{t(step.subtitle)}</Text>
 
               {/* Description */}
-              <Text style={styles.description}>{translatedDescription || step.description}</Text>
+              <Text style={styles.description}>{t(step.description)}</Text>
 
               {/* Step-specific content: Language Options */}
               {step.id === 0 && (
@@ -514,17 +487,17 @@ export default function OnboardingScreen() {
               {/* Step-specific content: Career Options (now non-clickable) */}
               {step.options && (
                 <View style={styles.optionsGrid}>
-                  {step.options.map((option, i) => (
+                  {step.options.map((option) => (
                     <DisplayCard key={option.name} style={styles.optionCard}>
                       <View style={styles.optionContent}>
                         {option.popular && (
-                          <Badge style={styles.popularBadge}>{translatedBadge || 'High Demand'}</Badge>
+                          <Badge style={styles.popularBadge}>{t('onboardingExtra.highDemand')}</Badge>
                         )}
                         {/* Wrapped FontAwesome6 in Text */}
                         <Text>
                           <FontAwesome6 name={option.icon} size={32} color="#ffaf1a" /> {/* FontAwesome6 icon */}
                         </Text>
-                        <Text style={styles.optionText}>{translatedOptions[i] || option.name}</Text>
+                        <Text style={styles.optionText}>{t(option.name)}</Text>
                         {/* Removed CheckCircle as there's no selection */}
                       </View>
                     </DisplayCard>
@@ -535,7 +508,7 @@ export default function OnboardingScreen() {
               {/* Step-specific content: Time Commitment Options (now non-clickable) */}
               {step.timeOptions && (
                 <View style={styles.timeOptions}>
-                  {step.timeOptions.map((option, i) => (
+                  {step.timeOptions.map((option) => (
                     <DisplayCard key={option.duration} style={styles.timeCard}>
                       <View style={styles.timeContent}>
                         <View style={styles.timeLeft}>
@@ -544,13 +517,13 @@ export default function OnboardingScreen() {
                             <FontAwesome6 name="clock" size={20} color="#ffaf1a" /> {/* FontAwesome6 icon */}
                           </Text>
                           <View style={styles.timeTexts}>
-                            <Text style={styles.timeDuration}>{translatedTimeDurations[i] || option.duration}</Text>
-                            <Text style={styles.timeDescription}>{translatedTimeDescriptions[i] || option.description}</Text>
+                            <Text style={styles.timeDuration}>{t(option.duration)}</Text>
+                            <Text style={styles.timeDescription}>{t(option.description)}</Text>
                           </View>
                         </View>
                         <View style={styles.timeRight}>
                           {option.recommended && (
-                            <Badge style={styles.recommendedBadge}>{translatedRecommended || 'Most Popular'}</Badge>
+                            <Badge style={styles.recommendedBadge}>{t('onboardingExtra.mostPopular')}</Badge>
                           )}
                           {/* Removed CheckCircle as there's no selection */}
                         </View>
@@ -592,7 +565,7 @@ export default function OnboardingScreen() {
               <Text>
                 <FontAwesome6 name="arrow-left" size={16} color="#E67012" />
               </Text>
-              <TranslatedText style={styles.backButtonText}>Back</TranslatedText>
+              <Text style={styles.backButtonText}>{t('common.back')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -604,9 +577,11 @@ export default function OnboardingScreen() {
               <View
                 style={[styles.nextButtonGradient, { backgroundColor: '#E67012' }]}
               >
-                <TranslatedText style={styles.nextButtonText}>
-                  {currentStep === onboardingSteps.length - 1 ? "Sign Up" : "Next"}
-                </TranslatedText>
+                <Text style={styles.nextButtonText}>
+                  {currentStep === onboardingSteps.length - 1
+                    ? t('auth.signup')
+                    : t('common.next')}
+                </Text>
                 <Text>
                   <FontAwesome6 name="arrow-right" size={16} color="white" />
                 </Text>
