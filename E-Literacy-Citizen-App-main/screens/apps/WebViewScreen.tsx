@@ -9,21 +9,23 @@ import {
   TouchableOpacity,
   Text 
 } from 'react-native';
-import { Camera } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
 
 const WebViewScreen = ({ route, navigation }) => {
-  const { uri } = route.params;
+  const { uri, title } = route.params || {};
   const { colors } = useTheme();
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  // Request camera (and microphone) permission up-front so the AR web experience
+  // can access the device camera. Uses expo-image-picker so it also works in Expo Go.
   useEffect(() => {
     const requestCameraPermission = async () => {
       try {
-        const { status } = await Camera.requestCameraPermissionsAsync();
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
         setHasCameraPermission(status === 'granted');
       } catch (error) {
         console.error('Error requesting camera permission:', error);
@@ -38,10 +40,13 @@ const WebViewScreen = ({ route, navigation }) => {
     if (hasCameraPermission === false) {
       Alert.alert(
         "Camera Permission Required", 
-        "Camera access is required for AR features to work properly.",
+        "Camera access is required for AR features to work properly. Please enable it and relaunch the AR experience.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Settings", onPress: () => Camera.requestCameraPermissionsAsync() }
+          { text: "Retry", onPress: async () => {
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              setHasCameraPermission(status === 'granted');
+            } }
         ]
       );
     }
@@ -66,7 +71,9 @@ const WebViewScreen = ({ route, navigation }) => {
         >
           <FontAwesome6 name="arrow-left" size={20} color="#E67012" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.primary }]}>AR Experience</Text>
+        <Text style={[styles.headerTitle, { color: colors.primary }]} numberOfLines={1}>
+          {title || 'AR Experience'}
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -98,6 +105,14 @@ const WebViewScreen = ({ route, navigation }) => {
           // Enable camera and microphone for AR
           mediaTypes="all"
           allowsProtectedMedia={true}
+          // Grant the web page camera/mic access once the native permission is granted
+          onPermissionRequest={(request) => {
+            if (hasCameraPermission) {
+              request.grant();
+            } else {
+              request.deny();
+            }
+          }}
           // Additional AR-specific settings
           originWhitelist={['*']}
           mixedContentMode="compatibility"
