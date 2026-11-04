@@ -50,6 +50,7 @@ import Tools from './screens/apps/Tools';
 import WebViewScreen from './screens/apps/WebViewScreen';
 import AssessmentResults from './screens/apps/AssessmentResults';
 import ForgotPasswordScreen from './screens/apps/ForgotPasswordScreen';
+import AdminDashboard from './screens/apps/AdminDashboard';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function ThemedNavigator() {
@@ -83,6 +84,7 @@ function ThemedNavigator() {
         <Stack.Screen name="AssessmentResults" component={AssessmentResults} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <Stack.Screen name="AdminDashboard" component={AdminDashboard} />
       </Stack.Navigator>
     </NavigationContainer>
   );

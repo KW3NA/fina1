@@ -27,5 +27,6 @@ export type RootStackParamList = {
   AssessmentResults: { results: any }; // Added Assessment Results Screen
   Notifications: undefined; // Added Notifications Screen
   ForgotPassword: undefined;
+  AdminDashboard: undefined; // Added Admin Dashboard (Overview / Reports / Manage Users)
 
 }; 

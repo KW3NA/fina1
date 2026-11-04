@@ -23,6 +23,8 @@ import { FontAwesome6 } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home Screen'>;
 
+const roleIsAdmin = (role?: string | null) => role === 'admin' || role === 'superadmin';
+
 const HomeScreen = ({ navigation }: Props) => {
   const { colors, isDark } = useTheme();
   const [progress, setProgress] = useState<number>(0);
@@ -32,8 +34,38 @@ const HomeScreen = ({ navigation }: Props) => {
   const [lastName, setLastName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
     const { user, loading, signOut, refreshMe } = useAuthGuard(navigation);
   const username = user?.name ?? "-";
+
+  // Admin detection — checks the Supabase users table (role admin/superadmin)
+  // and caches the result per email in AsyncStorage for instant look on relaunch.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@cached_user');
+        const cached = raw ? JSON.parse(raw) : null;
+        const email = user?.email ?? cached?.email;
+        if (!email) return;
+        const cacheKey = `@is_admin:${email}`;
+        const cachedFlag = await AsyncStorage.getItem(cacheKey);
+        if (cachedFlag !== null) {
+          setIsAdmin(cachedFlag === 'true');
+          if (cachedFlag === 'true') return;
+        }
+        const { data } = await supabase
+          .from('users')
+          .select('role')
+          .eq('email', email)
+          .maybeSingle();
+        const admin = roleIsAdmin(data?.role);
+        await AsyncStorage.setItem(cacheKey, String(admin));
+        setIsAdmin(admin);
+      } catch {
+        /* offline / lookup failure — stay non-admin */
+      }
+    })();
+  }, [user?.email]);
   const avatarUri = user?.profile_picture_url ?? 'https://i.pravatar.cc/200?u=fallback';
   
   const currentDate = new Date().toLocaleDateString("en-GB", {
@@ -178,7 +210,18 @@ const HomeScreen = ({ navigation }: Props) => {
       desc: "Explore extra features that enhance your learning experience",
       bgColor: '#e3fde9ff',
       iconColor: "#21a55cff",
-    }
+    },
+    ...(isAdmin
+      ? [
+          {
+            icon: "chart-line",
+            title: "Admin Dashboard",
+            desc: "View reports and manage learners, practitioners and courses",
+            bgColor: '#EDE7F6',
+            iconColor: '#6D28D9',
+          },
+        ]
+      : []),
   ];
 
   // Dark-mode card background overrides (user-specified)
@@ -187,6 +230,7 @@ const HomeScreen = ({ navigation }: Props) => {
     'Learning Hub': '#4a3453',
     'Build My CV': '#234455',
     'Explore Tools': '#235539ff',
+    'Admin Dashboard': '#3b2f55',
   };
 
   const recentActivities: {
@@ -296,6 +340,8 @@ const HomeScreen = ({ navigation }: Props) => {
                 ? () => navigation.navigate('CVBuilder')
                 : item.title === "Explore Tools"
                 ? () => navigation.navigate("Tools")
+                : item.title === 'Admin Dashboard'
+                ? () => navigation.navigate('AdminDashboard')
                 : undefined
             }
           >
